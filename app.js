@@ -36,6 +36,7 @@ const MQP = window.MQP || {};   // 绘图
 const MQV = window.MQV || {};   // 卷积图解
 const MQC = window.MQC || {};   // 代码高亮
 const MQT = window.MQT || {};   // 速查表
+const MQG = window.MQG || {};   // 一键生成（标签驱动，纯本地）
 
 /* ===================== 设置（偏好，与数据分开存） ===================== */
 const SET_DEF = {
@@ -807,7 +808,7 @@ const DEF = {
       '【我的错误答案】',
       '（选填：我当时是怎么错的）',
       '【标签】',
-      '劳斯判据, 闭环稳定性, 单位反馈',
+      '劳斯判据, 根轨迹, 渐近稳定',
       '',
       '多题之间用单独一行 === 分隔',
     ].join('\n'),
@@ -840,7 +841,7 @@ const DEF = {
       '第 4 步：画实轴段与渐近线。实轴上某点右侧的实数极点与零点个数之和为奇数时该点在根轨迹上；$n-m$ 条渐近线交于 $\\sigma_a=\\dfrac{\\sum p_i-\\sum z_i}{n-m}$，与实轴夹角 $\\theta_a=\\dfrac{(2k+1)\\pi}{n-m}$。',
       '第 5 步：求特殊点。分离点满足 $\\dfrac{d}{ds}\\left[\\dfrac{1}{G(s)H(s)}\\right]=0$；与虚轴的交点可令 $s=j\\omega$ 代入特征方程，或用劳斯判据求得。',
       '【标签】',
-      '根轨迹, 绘制法则, 闭环极点',
+      '根轨迹, 劳斯判据',
       '',
       '多个知识点之间用单独一行 === 分隔',
     ].join('\n'),
@@ -914,11 +915,21 @@ const PRESET_TAGS = {
     '离散与实现': ['离散化', '零阶保持', '采样周期', '多变量系统', '数字控制器'],
   },
 };
+// 该标签是否能驱动「一键生成」（用于给预设标签加 ⚡ 角标）
+function isDrivableTag(subject, tag) {
+  if (!MQG.drivableTags) return false;
+  const flat = t => String(t).replace(/\s+/g, '');
+  const key = flat(tag);
+  return MQG.drivableTags(subject).some(t => flat(t) === key);
+}
 function presetTagsHTML(subject) {
   const groups = PRESET_TAGS[subject] || {};
   return Object.keys(groups).map(g => `
     <div class="preset-group">${esc(g)}</div>
-    <div class="preset-tags">${groups[g].map(t => `<button type="button" class="preset-tag" data-tag="${esc(t)}">${esc(t)}</button>`).join('')}</div>
+    <div class="preset-tags">${groups[g].map(t => {
+      const ok = isDrivableTag(subject, t);
+      return `<button type="button" class="preset-tag${ok ? ' drivable' : ''}" data-tag="${esc(t)}"${ok ? ' title="该标签可驱动「一键生成」"' : ''}>${esc(t)}${ok ? '<span class="pt-bolt">⚡</span>' : ''}</button>`;
+    }).join('')}</div>
   `).join('');
 }
 function paintPresetState(box, isOn) {
@@ -1094,6 +1105,7 @@ function makeCard(it) {
       <button class="star ${it.star ? 'on' : ''}" data-act="star" title="${it.star ? '取消收藏' : '收藏'}">${it.star ? '★' : '☆'}</button>
       ${tags}${rel}
       <div class="cardacts">
+        ${hasGenPlan(it) ? `<button class="link" data-act="gen" title="按标签一键生成图表（本地离线，不联网）">⚡ 生成</button>` : ''}
         ${due}
         <span class="status ${it.status}" data-act="status">● ${STATUS[it.status]}</span>
         <button class="link" data-act="edit">编辑</button>
@@ -1125,6 +1137,8 @@ function makeCard(it) {
     btn.title = it.star ? '取消收藏' : '收藏';
     if (v.starOnly && !it.star) render();
   };
+  const genBtn = card.querySelector('[data-act="gen"]');
+  if (genBtn) genBtn.onclick = () => openGenDrawer(it);
   card.querySelector('[data-act="edit"]').onclick = () => openEdit(it);
   card.querySelector('[data-act="delete"]').onclick = () => {
     if (confirm('移入回收站？30 天内可在「设置 → 回收站」恢复。')) {
@@ -2159,6 +2173,7 @@ document.addEventListener('keydown', e => {
     if (settingsDrawer.classList.contains('open')) settingsDrawer.classList.remove('open');
     else if (refDrawer.classList.contains('open')) refDrawer.classList.remove('open');
     else if (plotDrawer.classList.contains('open')) closePlotDrawer();
+    else if (genDrawer.classList.contains('open')) closeGenDrawer();
   }
 });
 
@@ -2543,6 +2558,142 @@ document.getElementById('convPlay').onclick = () => {
   else { plotNoteEl.textContent = '当前环境不支持动画播放'; }
 };
 
+/* ===================== 一键生成（标签驱动 · 纯本地，不使用任何 API） =====================
+   入口 MQG.plan(subject, item)：先按题目标签匹配「该生成哪些图 / 表」，
+   再从题面文本确定性抽取传递函数 / 微分方程 / 状态空间矩阵，最后由 plot.js 的纯函数算出结果。
+   本区只负责渲染与交互，全程不联网、不读取任何 Key。 */
+const genDrawer = document.getElementById('genDrawer');
+const genSubEl = document.getElementById('genSub');
+const genParamsEl = document.getElementById('genParams');
+const genListEl = document.getElementById('genList');
+
+const GEN_NEED_NAME = {
+  tf: '传递函数', tfopen: '开环传递函数', eq: '微分方程',
+  ss: '状态空间矩阵', k: '增益 K', pair: '两路信号',
+};
+
+// 该条目是否有任一标签能驱动生成（决定卡片是否显示「⚡ 生成」）
+function hasGenPlan(it) {
+  if (!MQG.tagRule) return false;
+  const subject = it.subject || settings.subject;
+  return (it.tags || []).some(t => {
+    const r = MQG.tagRule(subject, t);
+    return r && (r.plots.length || r.tables.length);
+  });
+}
+
+function genTitleText(it) {
+  const s = String((it && (it.stem || it.title)) || '').replace(/\$/g, '').replace(/\s+/g, ' ').trim();
+  return s.length > 64 ? s.slice(0, 64) + '…' : s;
+}
+
+// 题面里自动识别到的参数，做成小圆片；识别不到的给一条提示
+function genParamChips(params) {
+  const chips = [];
+  if (params.tf) chips.push({ t: '传递函数 ' + params.tf.name + '(' + params.tf.domain + ')', hit: true });
+  if (params.openLoop) chips.push({ t: '开环 ' + params.openLoop.name + '(' + params.openLoop.domain + ')', hit: true });
+  if (params.eq) chips.push({ t: '微分方程（阶 ' + params.eq.order + '）', hit: true });
+  if (params.ss) chips.push({ t: '状态空间 ' + params.ss.n + ' 阶（A/B/C/D）', hit: true });
+  if (params.gainK != null) chips.push({ t: '增益 K=' + params.gainK, hit: true });
+  (params.notes || []).forEach(n => chips.push({ t: n, hit: true }));
+  if (!chips.length) {
+    chips.push({ t: '未从题面识别到可解析的表达式，可把题目写成 $G(s)=\\frac{10}{s^{2}+2s+10}$、开环 $G(s)=\\frac{K}{s(s+1)}$，或写出 $A=\\begin{pmatrix}…\\end{pmatrix}$、$B$、$C$', hit: false });
+  }
+  return chips;
+}
+
+// 表格数据 → HTML（tex:true 的单元格走 KaTeX）
+function genTableHTML(data) {
+  if (!data) return '';
+  const cell = c => (data.tex ? renderMath(String(c)) : esc(c));
+  return `<div class="gen-table">
+      <p class="setnote" style="font-weight:600; margin:4px 0 2px">${esc(data.title || '')}</p>
+      <table>
+        <thead><tr>${data.head.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead>
+        <tbody>${data.rows.map(r => `<tr>${r.map(c => `<td>${cell(c)}</td>`).join('')}</tr>`).join('')}</tbody>
+      </table>
+    </div>${data.note ? `<p class="setnote">${esc(data.note)}</p>` : ''}`;
+}
+
+function buildGenList(plan) {
+  if (!plan.items.length) {
+    genListEl.innerHTML = '<p class="gen-empty">这条内容的标签暂不驱动任何图表。可给它加上带 ⚡ 的预设标签（如「二阶系统」「根轨迹」「Bode 图」「奈奎斯特」「状态方程」「能控性秩判据」）后再点「⚡ 生成」。</p>';
+    return;
+  }
+  genListEl.innerHTML = plan.items.map((it, i) => {
+    const icon = it.type === 'plot' ? '📈' : '▦';
+    let ctrl;
+    if (it.ready) {
+      ctrl = it.type === 'plot'
+        ? `<button class="primary gen-go" data-i="${i}">绘制</button>`
+        : `<button class="gen-tbl" data-i="${i}">展开</button>`;
+    } else {
+      ctrl = `<span class="badge-note">缺少 ${esc(it.missing.map(m => GEN_NEED_NAME[m] || m).join('、'))}</span>`;
+    }
+    return `<div class="gen-item" data-i="${i}">
+      <div class="gen-item-head">
+        <span class="gi-icon">${icon}</span>
+        <span class="gi-label">${esc(it.label)}</span>
+        <span class="gi-from">来自标签：<b>${esc(it.from.join(' / '))}</b></span>
+        <span class="spacer"></span>${ctrl}
+      </div>
+      ${it.ready ? '' : `<div class="gen-hint">需要：${esc(it.hint || '')}</div>`}
+      <div class="gen-body"></div>
+    </div>`;
+  }).join('');
+
+  genListEl.querySelectorAll('.gen-go').forEach(b => {
+    b.onclick = () => {
+      const it = plan.items[+b.dataset.i];
+      openPlotFromGen(it.kind, it.fields);
+    };
+  });
+  genListEl.querySelectorAll('.gen-tbl').forEach(b => {
+    b.onclick = () => {
+      const it = plan.items[+b.dataset.i];
+      const box = b.closest('.gen-item').querySelector('.gen-body');
+      if (box.dataset.open === '1') { box.innerHTML = ''; box.dataset.open = '0'; b.textContent = '展开'; return; }
+      box.innerHTML = genTableHTML(it.data);
+      box.dataset.open = '1';
+      b.textContent = '收起';
+    };
+  });
+}
+
+function openGenDrawer(it) {
+  const subject = it.subject || settings.subject;
+  genDrawer.classList.add('open');
+  if (!MQG.plan) {
+    genSubEl.textContent = '生成模块（gen.js）未加载';
+    genParamsEl.innerHTML = '';
+    genListEl.innerHTML = '';
+    return;
+  }
+  const plan = MQG.plan(subject, it);
+  const title = genTitleText(it);
+  genSubEl.innerHTML = `【${esc(SUBJECT[subject] || '')}】${esc(title || '（无标题）')} · 标签 ${plan.tags.length} 个 → 命中 ${plan.items.length} 项生成`;
+  genParamsEl.innerHTML = `<div class="gen-chips">${genParamChips(plan.params)
+    .map(c => `<span class="gen-chip${c.hit ? ' hit' : ''}">${esc(c.t)}</span>`).join('')}</div>`;
+  buildGenList(plan);
+}
+function closeGenDrawer() { genDrawer.classList.remove('open'); }
+
+// 设定绘图类型（同步顶部图型分段按钮的高亮）
+function setPlotKind(kind) {
+  plotKind = kind;
+  plotKindEl.querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.kind === kind));
+}
+// 从生成面板跳到绘图面板：自动切换图型、预填字段并立即出图
+function openPlotFromGen(kind, fields) {
+  closeGenDrawer();
+  setPlotKind(kind);
+  openPlotDrawer(null);
+  if (fields) { applyPlotValues(fields); renderPlot(); }
+}
+
+document.getElementById('genClose').onclick = closeGenDrawer;
+genDrawer.onclick = e => { if (e.target === genDrawer) closeGenDrawer(); };
+
 /* ===================== AI 识题（可选功能，仅此功能需要联网） =====================
    上传题目图片 → 调用你所选服务商的视觉模型 → 按固定格式返回 → 你核对后导入。
    API Key 仅存本机 localStorage（键 ac_ai）：不写入导出备份，也不进仓库。
@@ -2675,6 +2826,26 @@ function aiOcrPrompt() {
   ].join('\n');
 }
 
+/* 「一键生成」完全由标签 + 题面里的传递函数 / 状态空间矩阵在本地驱动：
+   标签名与课程标准标签不同名、矩阵只写 $\dot{x}=Ax+Bu$ 而不给 A、B、C 的具体形式，
+   都会导致抽不出图与表。这里把这两条硬约束写进提示词，并把当前科目的标准标签注入，
+   避免 AI 自造同义词（如「闭环稳定性」「单位反馈」）导致命中率低。 */
+function aiTagVocab() {
+  const groups = PRESET_TAGS[settings.subject] || {};
+  return Object.keys(groups).map(g => `· ${g}：${groups[g].join(' / ')}`).join('\n');
+}
+function aiGenTips() {
+  const tips = [
+    '',
+    '补充要求（本复习本的图 / 表由标签和题面在本地自动生成，不联网，下面两条必须遵守）：',
+    '· 【标签】只能从下面「本课程标准标签」里挑，必须完全同名、用逗号分隔，例如要写「二阶系统」「根轨迹」「Bode 图」「奈奎斯特」「稳态误差」「状态方程」「能控性秩判据」，不要写「闭环稳定性」「单位反馈」「绘制法则」这类自造写法；确实没有合适的就留空。标签决定本应用能自动画出哪些图、列出哪些表。',
+  ];
+  const vocab = aiTagVocab();
+  if (vocab) tips.push('本课程标准标签：', vocab);
+  tips.push('· 传递函数、开环传递函数、微分方程、状态空间矩阵要能被本应用自动识别，必须各自用单个 $...$ 写成完整的一行：传递函数写成 $G(s)=\\frac{10}{s^{2}+2s+10}$，开环要写清「开环传递函数 $G(s)=\\frac{K}{s(s+1)}$」，微分方程写成 $y\'\'+3y\'+2y=u(t)$ 这类降幂形式；状态空间不要只写 $\\dot{x}=Ax+Bu$ 而不给矩阵，要把 $A=\\begin{pmatrix}0&1\\\\-2&-3\\end{pmatrix}$、$B=\\begin{pmatrix}0\\\\1\\end{pmatrix}$、$C=\\begin{pmatrix}1&0\\end{pmatrix}$ 逐个写出来（矩阵用 \\begin{pmatrix} 或 \\begin{bmatrix}，换行用 \\\\，列用 &）。识别不到这些式子就只能标「缺少…」。');
+  return tips;
+}
+
 /* 两条主提示词（内置调用 / 复制给免费 AI）共用同一份「输出要求」，
    避免两处各写一份、以后改一处忘一处。 */
 function aiOutputRules() {
@@ -2703,7 +2874,7 @@ function aiOutputRules() {
     '6. 上面的原文里若含多项（以 === 分隔），输出的每一项与之一一对应；',
     '7. 不要改动原文的内容，只在其基础上补充讲解与整理。',
   ];
-  return base.concat(steps);
+  return base.concat(steps, aiGenTips());
 }
 
 // 第二步：基于用户已核对/修正过的原文，解题并整理成导入格式
