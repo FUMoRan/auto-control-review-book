@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>S&amp;S · DSP 复习本</title>
-<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="88">📡</text></svg>'>
+<title>自控 · 线控 复习本</title>
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="88">🎛️</text></svg>'>
 <!-- PWA-BEGIN 以下到 PWA-END 之间为「添加到主屏幕」相关配置，离线单文件版会自动移除 -->
 <link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#4c6ef5">
@@ -16,16 +16,16 @@
 <body>
 
 <header>
-  <h1>📡 S&amp;S · DSP 复习本</h1>
-  <div class="seg subjects" id="subjectSeg" title="切换科目：连续（信号与系统）/ 离散（数字信号处理）">
-    <button data-subject="ss">连续 · S&amp;S</button>
-    <button data-subject="dsp">离散 · DSP</button>
+  <h1>🎛️ 自控 · 线控 复习本</h1>
+  <div class="seg subjects" id="subjectSeg" title="切换科目：经典控制（自动控制原理）/ 现代控制（线性控制系统）">
+    <button data-subject="ac">经典 · 自控</button>
+    <button data-subject="lc">现代 · 线控</button>
   </div>
   <div class="tabs">
     <button class="tab active" data-view="q">错题</button>
     <button class="tab" data-view="k">知识点</button>
   </div>
-  <input id="search" class="search" placeholder="搜索…（tag:卷积、status:已掌握、star、due、has:img、has:code）">
+  <input id="search" class="search" placeholder="搜索…（tag:根轨迹、status:已掌握、star、due、has:img、has:code）">
   <select id="statusFilter">
     <option value="">全部状态</option>
     <option value="new">未复习</option>
@@ -44,8 +44,8 @@
   <button id="codeOnlyBtn">⌨ 只看有代码</button>
   <button id="randomBtn">随机一题</button>
   <button id="cramBtn">背题模式</button>
-  <button id="refBtn" title="常用变换对 · 性质 · 连续↔离散对照">📐 速查</button>
-  <button id="plotBtn" title="画波形 / 频谱 / 零极图 / 卷积图解">📈 绘图</button>
+  <button id="refBtn" title="常用变换对 · 性质与判据 · 对照">📐 速查</button>
+  <button id="plotBtn" title="阶跃响应 / Bode / 奈奎斯特 / 根轨迹 / 零极图 / 卷积图解">📈 绘图</button>
   <button id="exportBtn">导出</button>
   <button id="importBtn2">导入</button>
   <button class="primary" id="addBtn">+ 新增错题</button>
@@ -172,7 +172,7 @@
   </div>
 </div>
 
-<!-- 速查面板：变换对 / 性质 / 连续↔离散对照 -->
+<!-- 速查面板：变换对 / 性质与判据 / 对照 -->
 <div class="drawer" id="refDrawer">
   <div class="drawer-panel">
     <div class="row" style="margin:0 0 8px">
@@ -180,11 +180,11 @@
       <span class="spacer"></span>
       <button class="ghost" id="refClose">关闭</button>
     </div>
-    <input id="refSearch" class="search" placeholder="搜索…（如 卷积 / 时移 / z / Parseval / 采样）">
+    <input id="refSearch" class="search" placeholder="搜索…（如 劳斯 / 裕度 / 根轨迹 / 能控性 / 李雅普诺夫）">
     <div class="seg" id="refTabs">
       <button data-ref="pairs" class="on">变换对</button>
-      <button data-ref="props">性质</button>
-      <button data-ref="contrast">连续 ↔ 离散</button>
+      <button data-ref="props">性质 / 判据</button>
+      <button data-ref="contrast">对照</button>
       <button data-ref="all">全部</button>
     </div>
     <p class="setnote" id="refMsg"></p>
@@ -192,7 +192,7 @@
   </div>
 </div>
 
-<!-- 绘图面板：时域 / 离散杆图 / 频谱 / Bode / 零极图 / 卷积图解 -->
+<!-- 绘图面板：阶跃响应 / Bode / 奈奎斯特 / 根轨迹 / 零极图 / 卷积图解 -->
 <div class="drawer" id="plotDrawer">
   <div class="drawer-panel">
     <div class="row" style="margin:0 0 8px">
@@ -201,10 +201,10 @@
       <button class="ghost" id="plotClose">关闭</button>
     </div>
     <div class="seg" id="plotKind">
-      <button data-kind="ct" class="on">时域波形</button>
-      <button data-kind="dt">离散杆图</button>
-      <button data-kind="spectrum">频谱</button>
-      <button data-kind="bode">幅频/相频</button>
+      <button data-kind="step" class="on">时域响应</button>
+      <button data-kind="bode">Bode 图</button>
+      <button data-kind="nyquist">奈奎斯特</button>
+      <button data-kind="rootlocus">根轨迹</button>
       <button data-kind="polezero">零极点图</button>
       <button data-kind="conv">卷积图解</button>
     </div>
@@ -223,9 +223,9 @@
       <span class="badge-note" id="plotNote"></span>
     </div>
     <p class="setnote">
-      表达式用纯文本写：变量 <b>t</b>（连续）、<b>n</b>（离散）、<b>w</b>（角频率）；可用
-      <b>sin cos exp ln sqrt abs u() rect() tri() sinc()</b>，常量 <b>pi</b>。
-      例：<code>sin(2*pi*t)*exp(-2*t)</code>、<code>0.8^n</code>。
+      参数用纯文本写：传递函数按系数输入，例如分子 <code>[1]</code>、分母 <code>[1, 3, 2]</code> 表示 $1/(s^2+3s+2)$；
+      卷积图解用表达式，变量 <b>t</b>（连续）、<b>n</b>（离散），可用
+      <b>sin cos exp sqrt u() rect() tri()</b>，常量 <b>pi</b>。
     </p>
   </div>
 </div>
@@ -356,7 +356,7 @@
         <button data-imgsize="small">小图</button>
         <button data-imgsize="big">大图（图形题推荐）</button>
       </div>
-      <p class="setnote">「大图」会把卡片里的配图放大展示，适合波形、频谱、零极点图这类需要看刻度细节的题。</p>
+      <p class="setnote">「大图」会把卡片里的配图放大展示，适合阶跃响应、Bode 图、根轨迹、零极点图这类需要看刻度细节的题。</p>
     </div>
 
     <div class="setrow">

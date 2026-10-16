@@ -322,18 +322,18 @@ test('粘贴文本经解析归一化后可正确排程', () => {
 
 /* ===================== 科目与新增字段 ===================== */
 test('SUBJECT 定义两个科目及其简写', () => {
-  assert.equal(SUBJECT.ss, '信号与系统');
-  assert.equal(SUBJECT.dsp, '数字信号处理');
-  assert.equal(SUBJECT_SHORT.ss, 'S&S');
-  assert.equal(SUBJECT_SHORT.dsp, 'DSP');
+  assert.equal(SUBJECT.ac, '自动控制原理');
+  assert.equal(SUBJECT.lc, '线性控制系统');
+  assert.equal(SUBJECT_SHORT.ac, '自控');
+  assert.equal(SUBJECT_SHORT.lc, '线控');
 });
 
-test('normalizeQuestion / normalizeKp 的 subject 默认 ss，非法值回退 ss', () => {
-  assert.equal(normalizeQuestion({}).subject, 'ss');
-  assert.equal(normalizeQuestion({ subject: 'dsp' }).subject, 'dsp');
-  assert.equal(normalizeQuestion({ subject: 'xxx' }).subject, 'ss');
-  assert.equal(normalizeKp({}).subject, 'ss');
-  assert.equal(normalizeKp({ subject: 'dsp' }).subject, 'dsp');
+test('normalizeQuestion / normalizeKp 的 subject 默认 ac，非法值回退 ac', () => {
+  assert.equal(normalizeQuestion({}).subject, 'ac');
+  assert.equal(normalizeQuestion({ subject: 'lc' }).subject, 'lc');
+  assert.equal(normalizeQuestion({ subject: 'xxx' }).subject, 'ac');
+  assert.equal(normalizeKp({}).subject, 'ac');
+  assert.equal(normalizeKp({ subject: 'lc' }).subject, 'lc');
 });
 
 test('normalizeQuestion 保留 code 字段，非字符串回退为空串', () => {

@@ -1,6 +1,6 @@
 /* =========================================================
-   信号与系统 / 数字信号处理复习本 · plot.js
-   绘图模块：表达式编译、多项式求根、DFT 以及 canvas 绘图。
+   自控 · 线控 复习本 · plot.js
+   绘图模块：表达式编译、多项式求根、频域响应 以及 canvas 绘图。
 
    设计要点
    ---------
@@ -559,144 +559,286 @@
     return { x: m.l, y: m.t, w: W - m.l - m.r, h: H - m.t - m.b };
   }
 
-  // 连续时间波形
-  function drawCT(ctx, W, H, s, th) {
-    const box = panelBox(W, H, { l: 50, r: 16, t: 26, b: 36 });
-    const tMin = num(s.tMin, -5), tMax = num(s.tMax, 5);
-    const N = Math.max(2, Math.floor(num(s.samples, 800)));
-    let f;
-    try { f = compileExpr(s.expr); } catch (e) { notice(ctx, box, '表达式错误：' + e.message, th); return; }
+  /* =========================================================
+     以下为控制课程用图型：时域响应 / 奈奎斯特 / 根轨迹
+     ========================================================= */
 
-    const pts = [];
-    let lo = Infinity, hi = -Infinity;
-    for (let i = 0; i < N; i++) {
-      const x = tMin + (tMax - tMin) * i / (N - 1);
-      let y = Number(f({ t: x }));
-      if (!isFinite(y)) y = NaN;
-      pts.push({ x: x, y: y });
-      if (isFinite(y)) { if (y < lo) lo = y; if (y > hi) hi = y; }
+  // 频率响应 H(jω)（s 域）或 H(e^{jω})（z 域）
+  function freqResp(numC, denC, w, domain) {
+    const z = domain === 'z' ? { re: Math.cos(w), im: Math.sin(w) } : { re: 0, im: w };
+    return cdiv(evalPoly(numC, z), evalPoly(denC, z));
+  }
+
+  // 把降幂系数写成纯文本多项式，如 [1, 3, 2] + 's' → "s^2 + 3s + 2"
+  function polyText(c, v) {
+    const co = toCoeffs(c);
+    const deg = co.length - 1;
+    const parts = [];
+    for (let i = 0; i < co.length; i++) {
+      const k = co[i], p = deg - i;
+      if (!isFinite(k) || Math.abs(k) < 1e-12) continue;
+      const mag = Math.abs(k) === 1 ? '' : String(Math.round(k * 1000) / 1000);
+      const term = mag + (p === 0 ? '' : p === 1 ? v : v + '^' + p);
+      parts.push((parts.length ? (k > 0 ? ' + ' : ' − ') : (k < 0 ? '−' : '')) + term);
     }
+    return parts.join('') || '0';
+  }
+  function tfText(numC, denC, v) {
+    const V = v || 's';
+    return 'G(' + V + ') = (' + polyText(numC, V) + ') / (' + polyText(denC, V) + ')';
+  }
+  function polyScale(c, k) {
+    return toCoeffs(c).map(function (x) { return x * k; });
+  }
+
+  // 由 s 域分子/分母系数建立可控标准型状态空间（A,B,C,D）
+  function ssFromTF(numC, denC) {
+    const den = trimLead(toCoeffs(denC));
+    const numRaw = trimLead(toCoeffs(numC));
+    if (den.length < 2 || den[0] === 0) throw new Error('分母至少写成一阶以上，如 [1, 1]');
+    if (!numRaw.length) throw new Error('分子系数不能为空');
+    if (numRaw.length > den.length) throw new Error('分子阶数不能高于分母（请填真分式）');
+    const n = den.length - 1;
+    const a = den.slice(1).map(function (v) { return v / den[0]; });   // a1..an（降幂）
+    const b = numRaw.map(function (v) { return v / den[0]; });         // b0..bm
+    while (b.length < n + 1) b.unshift(0);                             // 左侧补 0，对齐到 b0..bn
+    const A = [], B = new Array(n).fill(0), C = [];
+    for (let i = 0; i < n; i++) {
+      const row = new Array(n).fill(0);
+      if (i < n - 1) row[i + 1] = 1;
+      else for (let j = 0; j < n; j++) row[j] = -a[n - 1 - j];
+      A.push(row);
+    }
+    B[n - 1] = 1;
+    for (let k = 0; k < n; k++) C.push(b[n - k] - b[0] * a[n - k - 1]);
+    return { A: A, B: B, C: C, D: b[0], n: n };
+  }
+
+  // 四阶龙格库塔积分 ẋ = Ax + Bu（u 为空表示 u≡0）→ { xs, dt }
+  function integrateRK4(sys, x0, tMax, N, constU) {
+    const n = sys.n, A = sys.A, B = sys.B;
+    const dt = tMax / N;
+    const mul = function (v) {
+      const out = new Array(n).fill(0);
+      for (let i = 0; i < n; i++) { let s = 0; for (let j = 0; j < n; j++) s += A[i][j] * v[j]; out[i] = s; }
+      return out;
+    };
+    const step = function (p, q, k) { return p.map(function (v, i) { return v + k * q[i]; }); };
+    const f = function (x) {
+      const Ax = mul(x);
+      if (constU == null) return Ax;
+      return Ax.map(function (v, i) { return v + B[i] * constU; });
+    };
+    const xs = [x0.slice()];
+    let x = x0.slice();
+    for (let i = 0; i < N; i++) {
+      const k1 = f(x);
+      const k2 = f(step(x, k1, dt / 2));
+      const k3 = f(step(x, k2, dt / 2));
+      const k4 = f(step(x, k3, dt));
+      x = x.map(function (v, j) { return v + dt / 6 * (k1[j] + 2 * k2[j] + 2 * k3[j] + k4[j]); });
+      xs.push(x.slice());
+    }
+    return { xs: xs, dt: dt };
+  }
+
+  // 时域响应：单位阶跃 / 单位冲激
+  function drawStep(ctx, W, H, s, th) {
+    const box = panelBox(W, H, { l: 60, r: 20, t: 28, b: 38 });
+    const impulse = s.resp === 'impulse';
+    const tMax = num(s.tMax, 10);
+    const N = Math.max(20, Math.floor(num(s.samples, 600)));
+    let sys;
+    try { sys = ssFromTF(s.num, s.den); }
+    catch (e) { notice(ctx, box, '系数错误：' + e.message, th); return; }
+
+    // 单位阶跃：零初值 + 常值输入；单位冲激：h(t)=C e^{At} B → 初值取 B、输入取 0
+    const x0 = new Array(sys.n).fill(0);
+    if (impulse) for (let i = 0; i < sys.n; i++) x0[i] = sys.B[i];
+    const sim = integrateRK4(sys, x0, tMax, N, impulse ? null : 1);
+
+    const pts = sim.xs.map(function (x, i) {
+      let y = 0;
+      for (let j = 0; j < sys.n; j++) y += sys.C[j] * x[j];
+      if (!impulse) y += sys.D;
+      return { x: i * sim.dt, y: isFinite(y) ? y : NaN };
+    });
+    let lo = Infinity, hi = -Infinity;
+    pts.forEach(function (p) { if (isFinite(p.y)) { if (p.y < lo) lo = p.y; if (p.y > hi) hi = p.y; } });
     if (!isFinite(lo) || !isFinite(hi)) { lo = -1; hi = 1; }
     lo = Math.min(lo, 0); hi = Math.max(hi, 0);
     const yr = niceRange(lo, hi);
-    const xr = [tMin, tMax];
+    const xr = [0, tMax];
 
     drawAxis(ctx, box, xr, yr, th, 't');
+    // y=1 参考线（稳态值，仅阶跃响应）
+    if (!impulse) {
+      const y1 = mapY(box, sys.D, yr[0], yr[1]);
+      if (y1 > box.y && y1 < box.y + box.h) {
+        ctx.save();
+        ctx.strokeStyle = th.muted; ctx.lineWidth = 1; ctx.setLineDash([5, 4]);
+        ctx.beginPath(); ctx.moveTo(box.x, y1); ctx.lineTo(box.x + box.w, y1); ctx.stroke();
+        ctx.restore();
+      }
+    }
     drawCurve(ctx, box, pts, xr, yr, th.curve, 1.8);
-    drawLabel(ctx, box, s.label, th);
+
+    let peak = pts[0];
+    pts.forEach(function (p) { if (isFinite(p.y) && p.y > peak.y) peak = p; });
+    drawLabel(ctx, box, (s.label || (impulse ? '单位冲激响应 h(t)' : '单位阶跃响应 y(t)'))
+      + '　' + tfText(s.num, s.den), th);
+    ctx.fillStyle = th.muted;
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillText('峰值 ' + (Math.round(peak.y * 1000) / 1000) + ' @ t=' + (Math.round(peak.x * 100) / 100), box.x + 6, box.y + 6);
   }
 
-  // 离散序列杆图
-  function drawDT(ctx, W, H, s, th) {
-    const box = panelBox(W, H, { l: 50, r: 16, t: 26, b: 36 });
-    const nMin = Math.round(num(s.nMin, -10)), nMax = Math.round(num(s.nMax, 10));
-    let f;
-    try { f = compileExpr(s.expr); } catch (e) { notice(ctx, box, '表达式错误：' + e.message, th); return; }
+  // 奈奎斯特图：开环 G(jω) 及其共轭镜像，并给出 P / N / Z 结论
+  function drawNyquist(ctx, W, H, s, th) {
+    const box = panelBox(W, H, { l: 56, r: 20, t: 28, b: 38 });
+    const numC = trimLead(toCoeffs(s.num)), denC = trimLead(toCoeffs(s.den));
+    if (!numC.length || denC.length < 2) { notice(ctx, box, '系数错误：请填写真分式的分子/分母系数', th); return; }
+    const wMin = Math.max(1e-4, num(s.wMin, 0.01));
+    const wMax = num(s.wMax, 100);
+    const N = Math.max(20, Math.floor(num(s.samples, 400)));
 
-    const pts = [];
-    let lo = Infinity, hi = -Infinity;
-    for (let n = nMin; n <= nMax; n++) {
-      let y = Number(f({ n: n }));
-      if (!isFinite(y)) y = NaN;
-      pts.push({ x: n, y: y });
-      if (isFinite(y)) { if (y < lo) lo = y; if (y > hi) hi = y; }
-    }
-    if (!isFinite(lo) || !isFinite(hi)) { lo = -1; hi = 1; }
-    lo = Math.min(lo, 0); hi = Math.max(hi, 0);
-    const yr = niceRange(lo, hi);
-    const xr = [nMin - 0.5, nMax + 0.5];
-
-    drawAxis(ctx, box, xr, yr, th, 'n');
-    drawStem(ctx, box, pts, xr, yr, th.stem);
-    drawLabel(ctx, box, s.label, th);
-  }
-
-  // 频谱：两种输入方式
-  function drawSpectrum(ctx, W, H, s, th) {
-    const from = s.from === 'time' ? 'time' : 'expr';
-    const mode = (s.mode === 'phase' || s.mode === 'both') ? s.mode : 'mag';
-    if (from === 'time') drawSpectrumTime(ctx, W, H, s, th, mode);
-    else drawSpectrumExpr(ctx, W, H, s, th, mode);
-  }
-
-  // a) 由时域离散序列做 DFT
-  function drawSpectrumTime(ctx, W, H, s, th, mode) {
-    const box = panelBox(W, H, { l: 50, r: 16, t: 26, b: 36 });
-    const varName = s.var || 'n';
-    let f;
-    try { f = compileExpr(s.expr); } catch (e) { notice(ctx, box, '表达式错误：' + e.message, th); return; }
-    const nMin = Math.round(num(s.nMin, 0)), nMax = Math.round(num(s.nMax, 7));
-    const seq = [];
-    for (let n = nMin; n <= nMax; n++) {
-      const vars = {}; vars[varName] = n;
-      let y = Number(f(vars));
-      seq.push(isFinite(y) ? y : 0);
-    }
-    const N = seq.length;
-    if (!N) { notice(ctx, box, '无可用的序列样本', th); return; }
-    const kMax = Math.floor(num(s.kMax, N - 1));
-    const D = dft(seq, kMax);
-    const usePhase = mode === 'phase';
-    const pts = D.map(function (d) { return { x: d.k, y: usePhase ? d.phase : d.mag }; });
-    const yr = rangeOf(pts, true);
-    const xr = [-0.5, kMax + 0.5];
-
-    drawAxis(ctx, box, xr, yr, th, 'k');
-    drawStem(ctx, box, pts, xr, yr, usePhase ? th.pole : th.stem);
-    drawLabel(ctx, box, (s.label || '序列 DFT') + (usePhase ? '（相位谱）' : '（幅度谱）'), th);
-  }
-
-  // b) 由以 w 为变量的表达式直接画幅度 / 相位曲线
-  function drawSpectrumExpr(ctx, W, H, s, th, mode) {
-    const wMin = num(s.wMin, 0), wMax = num(s.wMax, 10);
-    const N = Math.max(2, Math.floor(num(s.samples, 400)));
-    let f;
-    try { f = compileExpr(s.expr); } catch (e) {
-      notice(ctx, panelBox(W, H, { l: 52, r: 16, t: 26, b: 36 }), '表达式错误：' + e.message, th);
-      return;
-    }
-    const pts = [];
+    const wArr = [], Hc = [];
     for (let i = 0; i < N; i++) {
       const w = wMin + (wMax - wMin) * i / (N - 1);
-      let y = Number(f({ w: w }));
-      pts.push({ x: w, y: isFinite(y) ? y : NaN });
+      wArr.push(w); Hc.push(freqResp(numC, denC, w, 's'));
     }
+    let reLo = -1, reHi = 0, imLo = 0, imHi = 0;
+    Hc.forEach(function (h) {
+      if (!isFinite(h.re) || !isFinite(h.im)) return;
+      reLo = Math.min(reLo, h.re); reHi = Math.max(reHi, h.re);
+      imLo = Math.min(imLo, h.im); imHi = Math.max(imHi, h.im);
+    });
+    // 对称扩展一点余量
+    const reSpan = Math.max(1e-6, reHi - reLo);
+    const imSpan = Math.max(1e-6, imHi - imLo);
+    const span = Math.max(reSpan, imSpan) * 0.14;
+    const xr = niceRange(reLo - span, reHi + span);
+    const yr = niceRange(imLo - span, imHi + span);
+    drawAxis(ctx, box, xr, yr, th, 'Re');
 
-    if (mode === 'both') {
-      const gap = 30;
-      const m = { l: 52, r: 16, t: 24, b: 40 };
-      const h = (H - m.t - m.b - gap) / 2;
-      const top = { x: m.l, y: m.t, w: W - m.l - m.r, h: h };
-      const bot = { x: m.l, y: m.t + h + gap, w: W - m.l - m.r, h: h };
-      const magPts = pts.map(function (p) { return { x: p.x, y: isFinite(p.y) ? Math.abs(p.y) : NaN }; });
-      const ya = rangeOf(magPts, true);
-      drawAxis(ctx, top, [wMin, wMax], ya, th, null);
-      drawCurve(ctx, top, magPts, [wMin, wMax], ya, th.curve, 1.8);
-      drawLabel(ctx, top, (s.label || '频谱') + '（幅度）', th);
-      const yb = [-180, 180];
-      drawAxis(ctx, bot, [wMin, wMax], yb, th, 'ω');
-      drawCurve(ctx, bot, pts, [wMin, wMax], yb, th.pole, 1.8);
-      drawLabel(ctx, bot, '（相位，单位 rad）', th);
-    } else {
-      const box = panelBox(W, H, { l: 52, r: 16, t: 26, b: 36 });
-      const usePhase = mode === 'phase';
-      const view = usePhase ? pts : pts.map(function (p) { return { x: p.x, y: isFinite(p.y) ? Math.abs(p.y) : NaN }; });
-      const yr = rangeOf(view, true);
-      drawAxis(ctx, box, [wMin, wMax], yr, th, 'ω');
-      drawCurve(ctx, box, view, [wMin, wMax], yr, th.curve, 1.8);
-      drawLabel(ctx, box, (s.label || '频谱') + (usePhase ? '（相位）' : '（幅度）'), th);
+    // 镜像（ω<0，共轭）
+    const mirror = [];
+    for (let i = N - 1; i >= 0; i--) mirror.push({ x: Hc[i].re, y: -Hc[i].im });
+    ctx.save();
+    ctx.strokeStyle = th.muted; ctx.lineWidth = 1.2; ctx.setLineDash([5, 4]);
+    drawCurve(ctx, box, mirror.filter(function (p) { return isFinite(p.x) && isFinite(p.y); }), xr, yr, th.muted, 1.2);
+    ctx.restore();
+    const main = Hc.map(function (h) { return { x: h.re, y: h.im }; })
+      .filter(function (p) { return isFinite(p.x) && isFinite(p.y); });
+    drawCurve(ctx, box, main, xr, yr, th.curve, 1.8);
+
+    // (−1, j0) 临界点
+    const cx = mapX(box, -1, xr[0], xr[1]);
+    const cy = mapY(box, 0, yr[0], yr[1]);
+    ctx.save();
+    ctx.strokeStyle = th.pole; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx - 8, cy); ctx.lineTo(cx + 8, cy);
+    ctx.moveTo(cx, cy - 8); ctx.lineTo(cx, cy + 8); ctx.stroke();
+    ctx.restore();
+
+    // P：开环右半平面极点；N：曲线绕 (−1,j0) 的逆时针圈数；Z = P − N
+    const poles = polyRoots(denC);
+    const P = poles.filter(function (p) { return p.re > 1e-9; }).length;
+    let total = 0, ok = true;
+    const seq = mirror.map(function (p) { return { x: p.x + 1, y: p.y }; })
+      .concat(main.map(function (p) { return { x: p.x + 1, y: p.y }; }));
+    for (let i = 1; i < seq.length; i++) {
+      const a0 = Math.atan2(seq[i - 1].y, seq[i - 1].x);
+      const a1 = Math.atan2(seq[i].y, seq[i].x);
+      if (!isFinite(a0) || !isFinite(a1)) { ok = false; break; }
+      let d = a1 - a0;
+      while (d > Math.PI) d -= 2 * Math.PI;
+      while (d < -Math.PI) d += 2 * Math.PI;
+      total += d;
     }
+    const Nw = ok ? Math.round(total / (2 * Math.PI)) : 0;
+    const Z = P - Nw;
+    const imagAxisPole = poles.some(function (p) { return Math.abs(p.re) <= 1e-9; });
+
+    drawLabel(ctx, box, (s.label || '奈奎斯特图') + '　' + tfText(s.num, s.den), th);
+    ctx.fillStyle = Z === 0 ? th.stem : th.pole;
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    ctx.fillText('P = ' + P + '（开环右半平面极点）　N = ' + Nw + '（逆时针绕 −1）　Z = P − N = ' + Z
+      + '　→ ' + (Z === 0 ? '闭环稳定' : '闭环不稳定')
+      + (imagAxisPole ? '（含虚轴极点，严格结论需凹形绕行，此处为近似）' : ''), W / 2, H - 8);
   }
 
-  function rangeOf(pts, includeZero) {
-    let lo = Infinity, hi = -Infinity;
-    for (let i = 0; i < pts.length; i++) {
-      const y = pts[i].y;
-      if (isFinite(y)) { if (y < lo) lo = y; if (y > hi) hi = y; }
+  // 根轨迹：den + K·num = 0 的根随 K(0→∞) 移动
+  function drawRootLocus(ctx, W, H, s, th) {
+    const numC = trimLead(toCoeffs(s.num)), denC = trimLead(toCoeffs(s.den));
+    if (!numC.length || denC.length < 2) { notice(ctx, panelBox(W, H, { l: 16, r: 16, t: 16, b: 16 }), '系数错误：请填写开环传递函数的分子/分母系数', th); return; }
+    const kMax = Math.max(1e-6, num(s.kMax, 50));
+    const N = Math.max(20, Math.floor(num(s.samples, 200)));
+
+    const poles = polyRoots(denC), zeros = polyRoots(numC);
+    const marks = [];
+    for (let i = 0; i <= N; i++) {
+      const K = kMax * Math.pow(i / N, 2);          // 靠近 K=0 更密
+      const roots = polyRoots(polyAdd(denC, polyScale(numC, K)));
+      roots.forEach(function (r) {
+        if (isFinite(r.re) && isFinite(r.im)) marks.push({ x: r.re, y: r.im, k: K });
+      });
     }
-    if (!isFinite(lo) || !isFinite(hi)) { lo = -1; hi = 1; }
-    if (includeZero) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
-    return niceRange(lo, hi);
+    let R = 1;
+    marks.concat(poles).concat(zeros).forEach(function (p) {
+      R = Math.max(R, Math.abs(p.re == null ? p.x : p.re), Math.abs(p.im == null ? p.y : p.im));
+    });
+    R = R * 1.15 + 0.3;
+    const size = Math.max(140, Math.min(W - 90, H - 80));
+    const box = { x: (W - size) / 2, y: 28, w: size, h: size };
+    const xr = [-R, R], yr = [-R, R];
+    drawAxis(ctx, box, xr, yr, th, null);
+
+    // 稳定半平面（左半平面）浅色底
+    const x0px = mapX(box, 0, xr[0], xr[1]);
+    ctx.save();
+    ctx.fillStyle = th.stem; ctx.globalAlpha = 0.06;
+    ctx.fillRect(box.x, box.y, x0px - box.x, box.h);
+    ctx.restore();
+
+    // 轨迹点：颜色随 K 加深
+    ctx.save();
+    marks.forEach(function (m) {
+      const px = mapX(box, m.x, xr[0], xr[1]);
+      const py = mapY(box, m.y, yr[0], yr[1]);
+      if (px < box.x || px > box.x + box.w || py < box.y || py > box.y + box.h) return;
+      ctx.globalAlpha = 0.14 + 0.86 * (m.k / kMax);
+      ctx.fillStyle = th.curve;
+      ctx.beginPath(); ctx.arc(px, py, 1.7, 0, Math.PI * 2); ctx.fill();
+    });
+    ctx.restore();
+
+    // 开环极点 ×、开环零点 ○
+    ctx.save();
+    ctx.strokeStyle = th.pole; ctx.lineWidth = 2;
+    poles.forEach(function (p) {
+      const px = mapX(box, p.re, xr[0], xr[1]), py = mapY(box, p.im, yr[0], yr[1]), d = 5;
+      ctx.beginPath();
+      ctx.moveTo(px - d, py - d); ctx.lineTo(px + d, py + d);
+      ctx.moveTo(px - d, py + d); ctx.lineTo(px + d, py - d);
+      ctx.stroke();
+    });
+    ctx.strokeStyle = th.zeroMark;
+    zeros.forEach(function (q) {
+      const px = mapX(box, q.re, xr[0], xr[1]), py = mapY(box, q.im, yr[0], yr[1]);
+      ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.stroke();
+    });
+    ctx.restore();
+
+    const maxKRoots = polyRoots(polyAdd(denC, polyScale(numC, kMax)));
+    const stableAtMax = maxKRoots.every(function (r) { return r.re < 1e-9; });
+    drawLabel(ctx, box, (s.label ? s.label + '　' : '') + '根轨迹　× 开环极点　○ 开环零点　· 闭环极点（K: 0 → ' + kMax + '）', th);
+    ctx.fillStyle = stableAtMax ? th.stem : th.pole;
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    ctx.fillText((stableAtMax ? 'K = ' + kMax + ' 时闭环极点全在左半平面（该增益下稳定）' : 'K = ' + kMax + ' 时存在右半平面闭环极点'), W / 2, H - 8);
   }
 
   function cdiv(a, b) {
@@ -820,10 +962,10 @@
       ctx.clearRect(0, 0, W, H);
       ctx.fillStyle = th.bg;
       ctx.fillRect(0, 0, W, H);
-      if (s.kind === 'ct') drawCT(ctx, W, H, s, th);
-      else if (s.kind === 'dt') drawDT(ctx, W, H, s, th);
-      else if (s.kind === 'spectrum') drawSpectrum(ctx, W, H, s, th);
+      if (s.kind === 'step') drawStep(ctx, W, H, s, th);
       else if (s.kind === 'bode') drawBode(ctx, W, H, s, th);
+      else if (s.kind === 'nyquist') drawNyquist(ctx, W, H, s, th);
+      else if (s.kind === 'rootlocus') drawRootLocus(ctx, W, H, s, th);
       else if (s.kind === 'polezero') drawPoleZero(ctx, W, H, s, th);
       else {
         const box = panelBox(W, H, { l: 16, r: 16, t: 16, b: 16 });
@@ -842,25 +984,26 @@
      五、一键载入示例（每种 kind ≥ 2 个，参数完整）
      ========================================================= */
   const PREVIEW = {
-    ct: [
-      { kind: 'ct', expr: 'sin(2*pi*t)*exp(-2*t)*u(t)', tMin: -1, tMax: 2.5, samples: 800, label: '因果衰减正弦 u(t)·sin(2πt)e^{-2t}' },
-      { kind: 'ct', expr: 'rect(t-1)*tri(t-1)', tMin: -0.5, tMax: 2.5, samples: 800, label: '矩形与三角脉冲' },
-    ],
-    dt: [
-      { kind: 'dt', expr: '0.8^n*u(n)', nMin: -2, nMax: 14, label: '因果指数序列 0.8^n u[n]' },
-      { kind: 'dt', expr: 'u(n)-u(n-5)', nMin: -2, nMax: 10, label: '矩形序列 u[n]-u[n-5]' },
-    ],
-    spectrum: [
-      { kind: 'spectrum', from: 'time', expr: '0.8^n', var: 'n', nMin: 0, nMax: 7, kMax: 7, mode: 'mag', label: '0.8^n 的 8 点 DFT' },
-      { kind: 'spectrum', from: 'expr', expr: '1/sqrt(1+w^2)', mode: 'mag', wMin: 0, wMax: 10, samples: 400, label: '一阶低通幅度 |H(jω)|' },
+    step: [
+      { kind: 'step', resp: 'step', num: [10], den: [1, 2, 10], tMax: 6, samples: 800, label: '单位阶跃响应 G(s)=10/(s²+2s+10)' },
+      { kind: 'step', resp: 'step', num: [1], den: [1, 3, 2], tMax: 8, samples: 800, label: '二阶过阻尼 G(s)=1/(s²+3s+2)' },
+      { kind: 'step', resp: 'impulse', num: [1], den: [1, 1, 1], tMax: 10, samples: 800, label: '临界阻尼单位冲激响应 G(s)=1/(s²+s+1)' },
     ],
     bode: [
-      { kind: 'bode', num: [1], den: [1, 1], domain: 's', wMin: 0.01, wMax: 100, samples: 400, label: 'H(s)=1/(s+1)' },
-      { kind: 'bode', num: [1], den: [1, -0.5], domain: 'z', wMin: 0, wMax: 3.1416, samples: 400, label: 'H(z)=1/(z-0.5)' },
+      { kind: 'bode', num: [1], den: [1, 1], domain: 's', wMin: 0.01, wMax: 100, samples: 400, label: '一阶系统 G(s)=1/(s+1)' },
+      { kind: 'bode', num: [10], den: [1, 2, 10], domain: 's', wMin: 0.01, wMax: 100, samples: 400, label: '二阶振荡 G(s)=10/(s²+2s+10)' },
+    ],
+    nyquist: [
+      { kind: 'nyquist', num: [10], den: [1, 2, 10], wMin: 0.01, wMax: 100, samples: 600, label: 'G(s)=10/(s²+2s+10)' },
+      { kind: 'nyquist', num: [1], den: [1, 3, 2, 0], wMin: 0.01, wMax: 100, samples: 600, label: 'G(s)=1/(s(s+1)(s+2))' },
+    ],
+    rootlocus: [
+      { kind: 'rootlocus', num: [1], den: [1, 3, 2, 0], kMax: 50, samples: 220, label: 'G(s)=1/(s(s+1)(s+2))' },
+      { kind: 'rootlocus', num: [1, 2], den: [1, 2, 2, 0], kMax: 30, samples: 220, label: 'G(s)=(s+2)/(s(s²+2s+2))' },
     ],
     polezero: [
-      { kind: 'polezero', num: [1, -0.2], den: [1, -0.9], domain: 'z', label: 'H(z)=(z-0.2)/(z-0.9)' },
-      { kind: 'polezero', num: [1, 0, 4], den: [1, 2, 5], domain: 's', label: 'H(s)=(s²+4)/(s²+2s+5)' },
+      { kind: 'polezero', num: [1, 2], den: [1, 3, 2], domain: 's', label: 'G(s)=(s+2)/(s²+3s+2)' },
+      { kind: 'polezero', num: [10], den: [1, 2, 10], domain: 's', label: 'G(s)=10/(s²+2s+10) 复极点' },
     ],
   };
 

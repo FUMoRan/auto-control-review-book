@@ -162,7 +162,7 @@ test('DFT: cos 序列峰值落在正确频点索引', () => {
 
 /* ===================== 预览示例基本自洽 ===================== */
 test('PREVIEW 每种 kind 至少两个示例，参数完整且可编译', () => {
-  const kinds = ['ct', 'dt', 'spectrum', 'bode', 'polezero'];
+  const kinds = ['step', 'bode', 'nyquist', 'rootlocus', 'polezero'];
   kinds.forEach(function (kind) {
     const list = MQP.PREVIEW[kind];
     assert.ok(Array.isArray(list) && list.length >= 2, kind + ' 示例不足');
@@ -171,8 +171,7 @@ test('PREVIEW 每种 kind 至少两个示例，参数完整且可编译', () => 
       if (spec.expr) {
         assert.equal(typeof compileExpr(spec.expr), 'function', kind + ' 表达式应可编译：' + spec.expr);
       }
-      if (kind === 'bode') assert.ok(Array.isArray(spec.num) && Array.isArray(spec.den));
-      if (kind === 'polezero') assert.ok(Array.isArray(spec.num) && Array.isArray(spec.den));
+      assert.ok(Array.isArray(spec.num) && Array.isArray(spec.den), kind + ' 应提供分子/分母系数');
     });
   });
 });

@@ -1,10 +1,10 @@
 /* =========================================================
-   S&S · DSP 复习本 · app.js
-   科目：ss = 信号与系统（连续）/ dsp = 数字信号处理（离散），顶部切换，数据按 subject 字段分区。
+   自控 · 线控 复习本 · app.js
+   科目：ac = 自动控制原理（经典控制）/ lc = 线性控制系统（现代控制），顶部切换，数据按 subject 字段分区。
    两个视图：q = 错题 / k = 知识点，数据分开存，共用一套标签。
    在基座（数学复习本）之上新增：
      · 学科绘图（plot.js / conv.js）与代码高亮（code.js）
-     · 变换对 / 性质 / 连续↔离散 速查表（transforms.js）
+     · 公式速查表（transforms.js）
      · 配图编号、顺序调整、卡片大图模式、多图灯箱（翻页/缩放/旋转/拖动）
      · 拖拽与剪贴板粘贴图片、公式快捷插入条、学科预设标签
      · 搜索扩展 has:img / has:code、只看有图 / 只看有代码
@@ -14,13 +14,13 @@
 /* ===================== 存储键 =====================
    注意：本站与「数学复习本」可能同源（同为 *.github.io），
    因此 localStorage / IndexedDB 的键名与库名必须完全独立，避免串库。 */
-const K_Q = 'sd_items';
-const K_K = 'sd_kps';
-const K_SET = 'sd_settings';
-const K_TRASH = 'sd_trash';
-const K_AI = 'sd_ai';
-const K_LASTEXPORT = 'sd_lastexport';
-const IDB_NAME = 'sdimg';
+const K_Q = 'ac_items';
+const K_K = 'ac_kps';
+const K_SET = 'ac_settings';
+const K_TRASH = 'ac_trash';
+const K_AI = 'ac_ai';
+const K_LASTEXPORT = 'ac_lastexport';
+const IDB_NAME = 'acimg';
 
 /* 纯逻辑统一放在 lib.js（浏览器与单测共用），此处引用即可 */
 const {
@@ -40,7 +40,7 @@ const MQT = window.MQT || {};   // 速查表
 /* ===================== 设置（偏好，与数据分开存） ===================== */
 const SET_DEF = {
   cols: 'auto', theme: 'system', density: 'comfortable', anim: 'on',
-  imgsize: 'small', subject: 'ss',
+  imgsize: 'small', subject: 'ac',
 };
 
 function readSettings() {
@@ -50,7 +50,7 @@ function readSettings() {
   } catch (e) { return {}; }
 }
 const settings = Object.assign({}, SET_DEF, readSettings());
-if (!SUBJECT[settings.subject]) settings.subject = 'ss';
+if (!SUBJECT[settings.subject]) settings.subject = 'ac';
 
 function saveSettings() {
   try { localStorage.setItem(K_SET, JSON.stringify(settings)); } catch (e) {}
@@ -609,80 +609,86 @@ async function persist(key, val) {
 }
 function saveStore(key, list) { return persist(key, list); }
 
-/* ===================== 种子数据（S&S / DSP 各两条例） ===================== */
+/* ===================== 种子数据（自控 / 线控 各两条例） ===================== */
 function seedQuestions() {
   const now = Date.now();
   return [
     {
-      id: uid(), subject: 'ss', status: 'new', tags: ['卷积', '阶跃信号', '因果系统'],
+      id: uid(), subject: 'ac', status: 'new', tags: ['一阶系统', '单位阶跃响应', '调节时间'],
       createdAt: now, updatedAt: now,
-      stem: '设 $x(t)=\\mathrm{u}(t)-\\mathrm{u}(t-2)$，$h(t)=e^{-t}\\mathrm{u}(t)$，求卷积 $y(t)=x(t)*h(t)$。',
+      stem: '某系统的传递函数为 $G(s)=\\dfrac{2}{s+1}$，求其单位阶跃响应 $y(t)$，并求 $5\\%$ 误差带下的调节时间 $t_s$。',
       analysis: [
-        '$y(t)=\\int_{-\\infty}^{\\infty}x(\\tau)h(t-\\tau)\\,d\\tau$，其中 $h(t-\\tau)=e^{-(t-\\tau)}\\mathrm{u}(t-\\tau)$。',
-        '当 $0<t<2$ 时：$y(t)=\\int_{0}^{t}e^{-(t-\\tau)}d\\tau=1-e^{-t}$；',
-        '当 $t\\ge 2$ 时：$y(t)=\\int_{0}^{2}e^{-(t-\\tau)}d\\tau=e^{-t}(e^{2}-1)$；',
-        '$t<0$ 时 $y(t)=0$。',
+        '第 1 步：识别系统类型。分母为一次多项式，是不含积分的一阶惯性环节，对照 $G(s)=\\dfrac{K}{Ts+1}$ 得 $K=2$、时间常数 $T=1$。',
+        '第 2 步：写响应变换式。单位阶跃输入 $R(s)=\\dfrac{1}{s}$，故 $Y(s)=G(s)R(s)=\\dfrac{2}{s(s+1)}$。',
+        '第 3 步：部分分式展开。$\\dfrac{2}{s(s+1)}=\\dfrac{A}{s}+\\dfrac{B}{s+1}$，解得 $A=2$、$B=-2$，即 $Y(s)=\\dfrac{2}{s}-\\dfrac{2}{s+1}$。',
+        '第 4 步：拉氏反变换。$y(t)=2\\left(1-e^{-t}\\right)\\mathrm{u}(t)$，稳态值为 $2$，过程单调无超调。',
+        '第 5 步：求调节时间。$5\\%$ 误差带下 $t_s=3T$，代入 $T=1$ 得 $t_s=3\\,\\mathrm{s}$（若取 $2\\%$ 误差带则 $t_s=4T=4\\,\\mathrm{s}$）。',
       ].join('\n'),
-      knowledge: '卷积积分“翻褶—平移—相乘—积分”四步法；含 $\mathrm{u}$ 的因果信号相乘时，要注意两个阶跃函数共同限定的积分区间（分段点由分段信号边界给出）。',
+      knowledge: '一阶惯性系统 $G(s)=\\dfrac{K}{Ts+1}$：响应单调、无超调，稳态值为 $K$（此处 $K=2$）；时间常数 $T$ 越小过渡越快，$\\pm5\\%$ 误差带 $t_s=3T$、$\\pm2\\%$ 误差带 $t_s=4T$。',
       code: [
-        't = linspace(-1, 6, 400);',
-        'x = double(t>=0 & t<2);',
-        'h = exp(-t).*double(t>=0);',
-        'dt = t(2)-t(1);',
-        'y = conv(x, h) * dt;            % 数值卷积',
-        'ty = t(1) + (0:length(y)-1) * dt;',
-        'plot(ty, y); grid on; xlabel(\'t\'); ylabel(\'y(t)\');',
+        'num = 2; den = [1 1];',
+        'sys = tf(num, den);        % G(s) = 2/(s+1)',
+        'step(sys); grid on;        % 单位阶跃响应 y(t)=2(1-e^{-t})',
+        'stepinfo(sys)              % 读取 SettlingTime 等指标',
       ].join('\n'),
       myAnswer: '',
     },
     {
-      id: uid(), subject: 'ss', status: 'reviewing', tags: ['拉普拉斯变换', '稳定性', '零极点'],
+      id: uid(), subject: 'ac', status: 'reviewing', tags: ['劳斯判据', '闭环稳定性', '单位反馈'],
       createdAt: now, updatedAt: now,
-      stem: '某因果 LTI 系统 $H(s)=\\dfrac{s+2}{s^{2}+2s+5}$，判断系统是否稳定，并说明理由。',
+      stem: '某单位反馈系统的开环传递函数为 $G(s)=\\dfrac{K}{s(s+2)}$，试确定使闭环系统稳定的 $K$ 取值范围。',
       analysis: [
-        '分母 $s^{2}+2s+5=0$ 的根为 $s=-1\\pm 2j$，两个极点实部均为 $-1<0$。',
-        '因果系统稳定的判据：所有极点位于 $s$ 左半平面。',
-        '此处全部极点实部为负，故系统**稳定**（收敛域 $\\mathrm{Re}\\{s\\}>-1$，包含虚轴）。',
+        '第 1 步：写闭环特征方程。闭环传递函数 $T(s)=\\dfrac{G(s)}{1+G(s)}$，令分母为零得 $1+G(s)=0$。',
+        '第 2 步：代入并整理。$1+\\dfrac{K}{s(s+2)}=0\\;\\Rightarrow\\;s(s+2)+K=0$，即 $s^{2}+2s+K=0$。',
+        '第 3 步：列劳斯表。二阶特征方程的劳斯表为：$s^{2}$ 行系数 $1$、$K$；$s^{1}$ 行系数 $2$；$s^{0}$ 行系数 $K$，故第一列为 $1,\\;2,\\;K$。',
+        '第 4 步：用劳斯判据。系统稳定要求劳斯表第一列元素全部大于零：$1>0$、$2>0$ 均成立，只需 $K>0$。',
+        '第 5 步：结论。当 $K>0$ 时闭环特征根始终具有负实部，闭环系统稳定。',
       ].join('\n'),
-      knowledge: '因果系统稳定 ⟺ 全部极点位于左半平面（连续）/ 单位圆内（离散）。收敛域包含虚轴（$j\\omega$ 轴）即稳定；因果性要求收敛域在极点最右侧。',
+      knowledge: '劳斯（Routh）稳定判据：把闭环特征方程按 $s$ 降幂排列，逐行计算劳斯表；第一列元素全部为正则系统稳定，第一列符号变化的次数等于右半平面特征根的个数。二阶系统 $s^{2}+a_1s+a_0=0$ 稳定的充要条件是 $a_1>0$ 且 $a_0>0$。',
       code: [
-        'num = [1 2]; den = [1 2 5];',
-        'zpk(tf(num, den))              % 极点 -1±2i，实部为负',
+        's = tf(\'s\');',
+        'G = 1/(s*(s+2));          % 单位增益下开环 G(s)',
+        'rlocus(G); grid on;       % 根轨迹：K>0 时两支均在左半平面',
+        'roots([1 2 5])            % 例如 K=5 时特征根实部为负',
       ].join('\n'),
       myAnswer: '',
     },
     {
-      id: uid(), subject: 'dsp', status: 'new', tags: ['Z变换', '收敛域', '几何序列'],
+      id: uid(), subject: 'lc', status: 'new', tags: ['能控性', '秩判据', '状态空间'],
       createdAt: now, updatedAt: now,
-      stem: '求序列 $x[n]=0.8^{\\,n}\\mathrm{u}[n]$ 的 Z 变换 $X(z)$ 与收敛域。',
+      stem: '已知线性定常系统 $\\dot{x}=Ax+Bu$，其中 $A=\\begin{pmatrix}1&2\\\\0&3\\end{pmatrix}$，$B=\\begin{pmatrix}0\\\\1\\end{pmatrix}$，判断系统是否完全能控。',
       analysis: [
-        '$X(z)=\\sum_{n=0}^{\\infty}0.8^{n}z^{-n}=\\sum_{n=0}^{\\infty}(0.8z^{-1})^{n}$。',
-        '当 $|0.8z^{-1}|<1$ 即 $|z|>0.8$ 时级数收敛，得',
-        '$X(z)=\\dfrac{1}{1-0.8z^{-1}}=\\dfrac{z}{z-0.8}$，收敛域 $|z|>0.8$。',
+        '第 1 步：写能控性矩阵。二阶系统 $n=2$，能控性矩阵 $Q_c=\\begin{pmatrix}B&AB\\end{pmatrix}$。',
+        '第 2 步：计算 $AB$。$AB=\\begin{pmatrix}1&2\\\\0&3\\end{pmatrix}\\begin{pmatrix}0\\\\1\\end{pmatrix}=\\begin{pmatrix}2\\\\3\\end{pmatrix}$。',
+        '第 3 步：拼出 $Q_c$。$Q_c=\\begin{pmatrix}0&2\\\\1&3\\end{pmatrix}$。',
+        '第 4 步：求秩。$\\det Q_c=0\\times3-2\\times1=-2\\neq0$，故 $\\mathrm{rank}\\,Q_c=2=n$。',
+        '第 5 步：结论。$Q_c$ 满秩，由能控性秩判据知系统完全能控。',
       ].join('\n'),
-      knowledge: '几何序列对：$a^{n}\\mathrm{u}[n]\\leftrightarrow\\dfrac{z}{z-a}$（$|z|>|a|$）。极点在 $z=a$，收敛域为极点外侧；因果序列的收敛域总是某圆外区域。',
+      knowledge: '能控性秩判据：$n$ 维线性定常系统 $\\dot{x}=Ax+Bu$ 完全能控 $\\iff$ 能控性矩阵 $Q_c=\\begin{pmatrix}B&AB&\\cdots&A^{n-1}B\\end{pmatrix}$ 满秩，即 $\\mathrm{rank}\\,Q_c=n$。单输入时 $Q_c$ 为 $n\\times n$ 方阵，条件化为 $\\det Q_c\\neq0$。',
       code: [
-        'n = 0:20;',
-        'x = 0.8.^n;',
-        'stem(n, x); grid on; xlabel(\'n\'); ylabel(\'x[n]\');',
+        'A = [1 2; 0 3]; B = [0; 1];',
+        'Qc = ctrb(A, B);          % 能控性矩阵 [B AB]',
+        'rank(Qc)                  % 返回 2 = n，说明完全能控',
       ].join('\n'),
       myAnswer: '',
     },
     {
-      id: uid(), subject: 'dsp', status: 'reviewing', tags: ['DFT', '频谱', 'FFT'],
+      id: uid(), subject: 'lc', status: 'reviewing', tags: ['可控标准型', '状态空间', '传递函数'],
       createdAt: now, updatedAt: now,
-      stem: '对 8 点序列 $x[n]=\\{1,1,1,1,0,0,0,0\\}$ 求 8 点 DFT 的幅度谱，并说明它和 DTFT 的关系。',
+      stem: '已知系统的传递函数为 $G(s)=\\dfrac{1}{s^{2}+3s+2}$，试写出其可控标准型状态空间表达式。',
       analysis: [
-        '$X[k]=\\sum_{n=0}^{7}x[n]e^{-j2\\pi kn/8}=\\sum_{n=0}^{3}e^{-j2\\pi kn/8}$。',
-        '当 $k=0$ 时 $X[0]=4$；$k\\neq 0$ 时为有限等比和，$|X[k]|=\\left|\\dfrac{\\sin(\\pi k/2)}{\\sin(\\pi k/8)}\\right|$。',
-        '$X[k]$ 是 DTFT $X(e^{j\\omega})$ 在 $\\omega=2\\pi k/8$ 上的 $N$ 点等间隔采样。',
+        '第 1 步：化为微分方程。由 $G(s)=\\dfrac{Y(s)}{U(s)}$ 交叉相乘并反变换得 $\\ddot{y}+3\\dot{y}+2y=u$。',
+        '第 2 步：选取状态变量。取相变量 $x_1=y$、$x_2=\\dot{y}$，则 $\\dot{x}_1=x_2$，$\\dot{x}_2=-2x_1-3x_2+u$。',
+        '第 3 步：写成矩阵形式。$\\dot{x}=\\begin{pmatrix}0&1\\\\-2&-3\\end{pmatrix}x+\\begin{pmatrix}0\\\\1\\end{pmatrix}u$。',
+        '第 4 步：写输出方程。$y=\\begin{pmatrix}1&0\\end{pmatrix}x$，故 $C=\\begin{pmatrix}1&0\\end{pmatrix}$、$D=0$。',
+        '第 5 步：核对可控性。$A$ 的最后一行取 $\\begin{pmatrix}-2&-3\\end{pmatrix}$、$B$ 取 $\\begin{pmatrix}0\\\\1\\end{pmatrix}$，能控性矩阵满秩，确为可控标准型。',
       ].join('\n'),
-      knowledge: 'N 点 DFT 是 DTFT 在 $[0,2\\pi)$ 上的 N 点等间隔取样：$X[k]=X(e^{j\\omega})\\big|_{\\omega=2\\pi k/N}$。补零只能加密取样点（谱更“光滑”），**不提高真实分辨率**；真实分辨率由观测时长决定。',
+      knowledge: '可控标准型（相变量形）：对首一传递函数 $\\dfrac{b_0}{s^{n}+a_{n-1}s^{n-1}+\\cdots+a_0}$，取 $A$ 为标准伴随形式（最后一行 $\\begin{pmatrix}-a_0&-a_1&\\cdots&-a_{n-1}\\end{pmatrix}$），$B=\\begin{pmatrix}0&\\cdots&0&1\\end{pmatrix}^{T}$，$C=\\begin{pmatrix}b_0&0&\\cdots&0\\end{pmatrix}$。',
       code: [
-        'x = [1 1 1 1 0 0 0 0];',
-        'X = fft(x);',
-        'k = (0:7);',
-        'stem(k, abs(X)); grid on; xlabel(\'k\'); ylabel(\'|X[k]|\');',
+        'num = 1; den = [1 3 2];',
+        '[A, B, C, D] = tf2ss(num, den);  % 得到可控标准型（相变量形）',
+        'sys = ss(A, B, C, D);',
+        'ctrb(A, B)                        % 验证能控性矩阵满秩',
       ].join('\n'),
       myAnswer: '',
     },
@@ -693,45 +699,51 @@ function seedKps() {
   const now = Date.now();
   return [
     {
-      id: uid(), subject: 'ss', status: 'new', tags: ['抽样定理', '频谱混叠'],
+      id: uid(), subject: 'ac', status: 'new', tags: ['根轨迹', '绘制法则', '闭环极点'],
       createdAt: now, updatedAt: now,
-      title: '抽样定理（奈奎斯特）',
+      title: '根轨迹绘制法则',
       content: [
-        '若 $x(t)$ 为带限信号，最高频率为 $f_m$，当抽样频率',
-        '$$f_s>2f_m$$',
-        '时，可由样值序列无失真地恢复原信号；否则发生**频谱混叠**。',
-        '恢复：理想低通滤波，截止频率取 $f_m<f_c<f_s-f_m$。',
-        '注意：抽样在频域表现为频谱以 $\\omega_s=2\\pi f_s$ 为周期延拓。',
+        '第 1 步：给定义。开环增益 $K$ 从 $0$ 增大到 $\\infty$ 时，闭环特征方程 $1+K G(s)H(s)=0$ 的根在 $s$ 平面上画出的轨迹称为根轨迹。',
+        '第 2 步：写两个条件。由 $1+KG(s)H(s)=0$ 拆出相角条件 $\\angle G(s)H(s)=(2k+1)\\pi$（决定轨迹形状）与幅值条件 $|G(s)H(s)|=1/K$（定出该点的 $K$）。',
+        '第 3 步：定起点与终点。起点为 $n$ 个开环极点（$K=0$），终点为 $m$ 个开环零点（$K\\to\\infty$），分支数等于极点数 $n$。',
+        '第 4 步：画实轴段与渐近线。实轴上某点右侧的实数极点与零点个数之和为奇数时该点在根轨迹上；$n-m$ 条渐近线交于 $\\sigma_a=\\dfrac{\\sum p_i-\\sum z_i}{n-m}$，与实轴夹角 $\\theta_a=\\dfrac{(2k+1)\\pi}{n-m}$。',
+        '第 5 步：求特殊点。分离点满足 $\\dfrac{d}{ds}\\left[\\dfrac{1}{G(s)H(s)}\\right]=0$；与虚轴的交点可令 $s=j\\omega$ 代入特征方程，或用劳斯判据求得。',
       ].join('\n'),
     },
     {
-      id: uid(), subject: 'ss', status: 'reviewing', tags: ['卷积定理', '变换性质'],
+      id: uid(), subject: 'ac', status: 'reviewing', tags: ['奈奎斯特判据', '相角裕度', '幅值裕度'],
       createdAt: now, updatedAt: now,
-      title: '卷积定理与时域↔频域对偶',
+      title: '奈奎斯特稳定判据与稳定裕度',
       content: [
-        '时域卷积 $x(t)*h(t)\\leftrightarrow X(j\\omega)H(j\\omega)$；',
-        '时域相乘 $x(t)h(t)\\leftrightarrow\\dfrac{1}{2\\pi}X(j\\omega)*H(j\\omega)$。',
-        '应用：LTI 系统 $Y(j\\omega)=X(j\\omega)H(j\\omega)$（相乘），理想滤波即频域取窗；调制即频域搬移。',
+        '第 1 步：给对象。开环传递函数的奈奎斯特图是 $\\omega$ 由 $0\\to\\infty$ 变化时 $G(j\\omega)H(j\\omega)$ 在复平面上的轨迹。',
+        '第 2 步：写判据。设 $N$ 为曲线包围 $(-1,j0)$ 点的圈数、$P$ 为开环右半平面极点数，则闭环右半平面极点数 $Z=P-2N$；$Z=0$ 时闭环稳定（常见情形 $P=0$ 时即不包围 $(-1,j0)$）。',
+        '第 3 步：读相角裕度。曲线与单位圆的交点频率为剪切频率 $\\omega_c$，相角裕度 $\\gamma=180^{\\circ}+\\angle G(j\\omega_c)H(j\\omega_c)$。',
+        '第 4 步：读幅值裕度。曲线与负实轴的交点频率为 $\\omega_g$，幅值裕度 $h=\\dfrac{1}{|G(j\\omega_g)H(j\\omega_g)|}$（分贝表示 $20\\lg h$）。',
+        '第 5 步：工程含义。$\\gamma>0$ 且 $h>1$ 系统稳定；一般取 $\\gamma=30^{\\circ}\\sim60^{\\circ}$、$h=6\\sim20\\,\\mathrm{dB}$ 以保证足够的稳定裕度。',
       ].join('\n'),
     },
     {
-      id: uid(), subject: 'dsp', status: 'new', tags: ['Z变换', '稳定性', '单位圆'],
+      id: uid(), subject: 'lc', status: 'new', tags: ['能控性', '秩判据', '能观性'],
       createdAt: now, updatedAt: now,
-      title: '单位圆与因果稳定判据',
+      title: '能控性与能观性秩判据',
       content: [
-        'Z 变换在 $z=e^{j\\omega}$（单位圆）上取值即 DTFT $X(e^{j\\omega})$。',
-        '因果系统稳定 ⟺ 全部极点在单位圆内（$|z|<1$）；此时收敛域包含单位圆。',
-        '频率响应 $H(e^{j\\omega})$ 可看作 $z$ 平面单位圆上的取值，极点靠近单位圆→该频率处出现峰值。',
+        '第 1 步：给定义。若存在允许的控制 $u(t)$，能在有限时间内把状态从任意初值转移到任意终态，则系统能控。',
+        '第 2 步：写能控判据。$n$ 维线性定常系统 $\\dot{x}=Ax+Bu$ 完全能控 $\\iff$ 能控性矩阵 $Q_c=\\begin{pmatrix}B&AB&\\cdots&A^{n-1}B\\end{pmatrix}$ 满秩，即 $\\mathrm{rank}\\,Q_c=n$。',
+        '第 3 步：单输入情形。单输入时 $Q_c$ 为 $n\\times n$ 方阵，条件简化为 $\\det Q_c\\neq0$。',
+        '第 4 步：写能观判据。对偶地，系统完全能观 $\\iff$ 能观性矩阵 $Q_o=\\begin{pmatrix}C^{T}&A^{T}C^{T}&\\cdots&(A^{T})^{n-1}C^{T}\\end{pmatrix}^{T}$ 满秩，即 $\\mathrm{rank}\\,Q_o=n$。',
+        '第 5 步：易错点。能控性只与 $(A,B)$ 有关、能观性只与 $(A,C)$ 有关；能控不等同于稳定，不要混淆。',
       ].join('\n'),
     },
     {
-      id: uid(), subject: 'dsp', status: 'new', tags: ['DTFT', 'DFT', '频率分辨率'],
+      id: uid(), subject: 'lc', status: 'reviewing', tags: ['李雅普诺夫', '渐近稳定', '稳定性'],
       createdAt: now, updatedAt: now,
-      title: 'DFT 与加窗、补零的区别',
+      title: '李雅普诺夫稳定性判据',
       content: [
-        '对有限长序列取 N 点 DFT，相当于在频域对 DTFT 等间隔取样。',
-        '**加窗**：把无限长（或长）序列截断为 N 点，频域被窗谱卷积 → 产生拖尾/泄漏，真实分辨率由窗主瓣宽度（≈ 观测时长）决定。',
-        '**补零**：只在频率轴上加密取样点，让曲线更连贯，**不改变真实分辨率**。',
+        '第 1 步：给概念。考虑零输入（$u\\equiv0$）系统，若从平衡点 $x_e=0$ 附近任意初值出发的轨迹都收敛到 $0$，则称渐近稳定。',
+        '第 2 步：间接法。线性定常系统 $\\dot{x}=Ax$ 渐近稳定 $\\iff$ $A$ 的全部特征值实部为负（$\\mathrm{Re}\\,\\lambda_i<0$）。',
+        '第 3 步：直接法（第二法）。取标量函数 $V(x)=x^{T}Px$（要求 $P=P^{T}>0$ 正定），若 $\\dot{V}(x)=x^{T}(A^{T}P+PA)x$ 负定，则系统渐近稳定。',
+        '第 4 步：判据式。等价于解李雅普诺夫方程 $A^{T}P+PA=-Q$：对任意给定的正定 $Q$（常取 $Q=I$），解出的 $P$ 若正定则系统渐近稳定。',
+        '第 5 步：易错点。$V$ 正定、$\\dot{V}$ 负定是充分条件（非线性系统才用得到）；线性系统用间接法即可；$Q$ 必须正定，先解出 $P$ 再判其正定。',
       ].join('\n'),
     },
   ];
@@ -778,24 +790,24 @@ const DEF = {
     importRequired: '题目',
     importExample: [
       '【题目】',
-      '已知 $x(t)=e^{-2t}\\mathrm{u}(t)$，求其傅里叶变换 $X(j\\omega)$。',
+      '某单位反馈系统的开环传递函数为 $G(s)=\\dfrac{K}{s(s+2)}$，试判断闭环系统的稳定性，并求使系统稳定的 $K$ 范围。',
       '（可以写 [图1] 引用配图，解析里会显示成可点击的图号）',
       '【解析】',
-      '第 1 步：写出定义式。傅里叶变换的定义为 $X(j\\omega)=\\int_{-\\infty}^{\\infty}x(t)e^{-j\\omega t}\\,dt$。',
-      '第 2 步：代入 $x(t)$ 并处理阶跃。$\\mathrm{u}(t)$ 在 $t<0$ 时为 $0$，故积分下限从 $-\\infty$ 收缩到 $0$：$$X(j\\omega)=\\int_{0}^{\\infty}e^{-2t}e^{-j\\omega t}\\,dt$$',
-      '第 3 步：合并指数。$e^{-2t}e^{-j\\omega t}=e^{-(2+j\\omega)t}$。',
-      '第 4 步：算出积分。$\\int_{0}^{\\infty}e^{-(2+j\\omega)t}\\,dt=\\left.\\frac{e^{-(2+j\\omega)t}}{-(2+j\\omega)}\\right|_{0}^{\\infty}=\\frac{1}{2+j\\omega}$，成立条件是 $\\mathrm{Re}\\{2+j\\omega\\}=2>0$（等价于信号绝对可积）。',
-      '第 5 步：写出结论。$X(j\\omega)=\\frac{1}{2+j\\omega}$，幅频 $|X(j\\omega)|=\\frac{1}{\\sqrt{4+\\omega^2}}$，相频 $\\angle X(j\\omega)=-\\arctan\\frac{\\omega}{2}$。',
+      '第 1 步：写闭环特征方程。由闭环传递函数 $T(s)=\\dfrac{G(s)}{1+G(s)}$ 令分母为零，得特征方程 $1+G(s)=0$。',
+      '第 2 步：代入开环传递函数。$1+\\dfrac{K}{s(s+2)}=0$，两边同乘 $s(s+2)$ 得 $s^{2}+2s+K=0$。',
+      '第 3 步：列劳斯表。二阶特征方程 $s^{2}+2s+K=0$ 的劳斯表第一列为 $1,\\;2,\\;K$。',
+      '第 4 步：用劳斯判据判断。稳定要求第一列全部大于零：$1>0$、$2>0$ 恒成立，故只需 $K>0$。',
+      '第 5 步：写出结论。当 $K>0$ 时闭环特征根均为负实部，系统稳定；本题为二阶系统，$K$ 无上界。',
       '【知识点】',
-      '单边指数信号：$e^{-at}\\mathrm{u}(t)\\leftrightarrow\\frac{1}{a+j\\omega}$，收敛条件 $\\mathrm{Re}\\{a\\}>0$；本题取 $a=2$。',
+      '劳斯（Routh）判据：特征方程按 $s$ 降幂排列列劳斯表，第一列元素全部同号则系统稳定，第一列符号变化次数即右半平面极点数。二阶系统稳定充要条件为各系数同号且不为零。',
       '【代码】',
-      't = 0:0.005:3;',
-      'x = exp(-2*t);',
-      'plot(t, x); grid on; xlabel(\'t\'); ylabel(\'x(t)\');',
+      's = tf(\'s\');',
+      'G = 1/(s*(s+2));',
+      'rlocus(G); grid on;        % 根轨迹：K>0 时两支均在左半平面',
       '【我的错误答案】',
       '（选填：我当时是怎么错的）',
       '【标签】',
-      '傅里叶变换, 单边指数, 收敛域',
+      '劳斯判据, 闭环稳定性, 单位反馈',
       '',
       '多题之间用单独一行 === 分隔',
     ].join('\n'),
@@ -820,15 +832,15 @@ const DEF = {
     importRequired: '知识点',
     importExample: [
       '【知识点】',
-      '抽样定理',
+      '根轨迹绘制法则',
       '【讲解】',
-      '第 1 步：说清问题。一般连续信号的频谱不是有限带宽的，想用离散样本恢复原信号，就必须先限制带宽。',
-      '第 2 步：给出条件。设 $x(t)$ 为带限信号、最高频率为 $f_m$（角频率 $\\omega_m=2\\pi f_m$），抽样频率须满足 $$f_s>2f_m$$ 时，才能由样本 $x(nT_s)$ 无失真地恢复 $x(t)$，其中 $T_s=1/f_s$。',
-      '第 3 步：解释原因。时域抽样相当于频域频谱以 $f_s$ 为周期延拓；若 $f_s\\le 2f_m$，相邻频谱副本会重叠，产生频谱混叠，高频分量被折叠到低频而无法还原。',
-      '第 4 步：给出恢复方法。用一个理想低通滤波器滤出原频谱，时域上就是 $\\mathrm{sinc}$ 插值：$$x(t)=\\sum_{n=-\\infty}^{\\infty}x(nT_s)\\,\\mathrm{sinc}\\left(\\frac{t-nT_s}{T_s}\\right)$$',
-      '第 5 步：易错点。$f_s=2f_m$ 是临界抽样（奈奎斯特率），工程上要留裕量（常取 $2.5\\sim 5$ 倍）；抽样前一般要先加抗混叠低通滤波器。',
+      '第 1 步：给定义。开环增益 $K$ 从 $0$ 增大到 $\\infty$ 时，闭环特征方程 $1+K G(s)H(s)=0$ 的根在 $s$ 平面上画出的轨迹称为根轨迹。',
+      '第 2 步：写两个条件。由 $1+KG(s)H(s)=0$ 拆出相角条件 $\\angle G(s)H(s)=(2k+1)\\pi$（决定轨迹形状）与幅值条件 $|G(s)H(s)|=1/K$（定出该点的 $K$）。',
+      '第 3 步：定起点与终点。起点为 $n$ 个开环极点（$K=0$），终点为 $m$ 个开环零点（$K\\to\\infty$），分支数等于极点数 $n$。',
+      '第 4 步：画实轴段与渐近线。实轴上某点右侧的实数极点与零点个数之和为奇数时该点在根轨迹上；$n-m$ 条渐近线交于 $\\sigma_a=\\dfrac{\\sum p_i-\\sum z_i}{n-m}$，与实轴夹角 $\\theta_a=\\dfrac{(2k+1)\\pi}{n-m}$。',
+      '第 5 步：求特殊点。分离点满足 $\\dfrac{d}{ds}\\left[\\dfrac{1}{G(s)H(s)}\\right]=0$；与虚轴的交点可令 $s=j\\omega$ 代入特征方程，或用劳斯判据求得。',
       '【标签】',
-      '抽样定理, 频谱混叠',
+      '根轨迹, 绘制法则, 闭环极点',
       '',
       '多个知识点之间用单独一行 === 分隔',
     ].join('\n'),
@@ -843,21 +855,21 @@ const DEF = {
 /* ===================== 公式快捷插入条 ===================== */
 const LATEX_SNIPPETS = [
   ['分式', '\\frac{a}{b}'],
-  ['积分', '\\int_{-\\infty}^{\\infty} '],
-  ['求和', '\\sum_{n=-\\infty}^{\\infty} '],
-  ['冲激', '\\delta(t)'],
-  ['阶跃', '\\mathrm{u}(t)'],
-  ['矩形', '\\mathrm{rect}(t)'],
-  ['sinc', '\\mathrm{sinc}(x)'],
-  ['复指数', 'e^{j\\omega t}'],
-  ['频域', 'X(j\\omega)'],
-  ['H(z)', 'H(z)=\\frac{1}{1-az^{-1}}'],
-  ['对应', '\\leftrightarrow'],
-  ['卷积', '*'],
+  ['拉普拉斯', '\\mathcal{L}\\{ \\}'],
+  ['传递函数', 'G(s)=\\dfrac{K}{s+1}'],
+  ['阶跃响应', 'y(t)=1-e^{-t/T}'],
+  ['s', 's'],
   ['ω', '\\omega'],
+  ['ζ', '\\zeta'],
+  ['ω_n', '\\omega_n'],
+  ['超调量', '\\sigma\\%'],
+  ['相角裕度', '\\gamma'],
+  ['矩阵', '\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}'],
+  ['状态方程', '\\dot{x}=Ax+Bu'],
+  ['e^{At}', 'e^{At}'],
+  ['对应', '\\leftrightarrow'],
   ['上标', '^{}'],
   ['下标', '_{}'],
-  ['矩阵', '\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}'],
 ];
 function insertAtCursor(el, text) {
   const start = el.selectionStart == null ? el.value.length : el.selectionStart;
@@ -889,17 +901,17 @@ buildLatexBar(document.getElementById('latexBarEdit'));
 
 /* ===================== 学科预设标签 ===================== */
 const PRESET_TAGS = {
-  ss: {
-    '基本信号': ['单位冲激', '单位阶跃', '冲激偶', '复指数信号', 'Sa 函数', '矩形脉冲', '三角脉冲', '符号函数'],
-    '变换': ['傅里叶级数', '傅里叶变换', '拉普拉斯变换', '频谱', '幅度谱', '相位谱', '收敛域', '变换性质'],
-    '系统': ['线性时不变', '因果', '稳定', '卷积', '冲激响应', '阶跃响应', '系统函数', '零极点', '频率响应', '全通', '无失真传输'],
-    '应用': ['抽样定理', '频谱混叠', '调制', '滤波器', '微分方程', '状态方程', '信号分解'],
+  ac: {
+    '时域分析': ['一阶系统', '二阶系统', '超调量', '调节时间', '稳态误差', '响应对应'],
+    '稳定性': ['劳斯判据', '赫尔维茨判据', '根轨迹', '渐近稳定', 'BIBO 稳定'],
+    '频域': ['Bode 图', '奈奎斯特', '幅值裕度', '相角裕度', '截止频率', '谐振峰值'],
+    '校正与实现': ['超前校正', '滞后校正', 'PID', '根轨迹校正', '型别', '开环增益'],
   },
-  dsp: {
-    '基本序列': ['单位脉冲序列', '单位阶跃序列', '指数序列', '复指数序列', '周期序列', '序列运算'],
-    '变换': ['DTFT', 'DFT', 'FFT', 'Z变换', '循环卷积', '线性卷积', '频谱泄漏', '频率分辨率'],
-    '系统': ['线性移不变', '因果稳定', '差分方程', '系统函数', '零极点', '频率响应', '全通', '最小相位', 'IIR', 'FIR'],
-    '实现': ['采样', '抽取', '内插', '多速率', '窗函数', 'DFT 对称性', 'FFT 算法'],
+  lc: {
+    '状态空间': ['状态方程', '输出方程', '可控标准型', '可观标准型', '状态转移矩阵', '矩阵指数', '相似变换'],
+    '能控能观': ['能控性秩判据', 'PBH 判据', '能观性秩判据', '能控分解', '能观分解'],
+    '稳定性与配置': ['李雅普诺夫', '渐近稳定', '极点配置', '状态反馈', '输出反馈', '观测器'],
+    '离散与实现': ['离散化', '零阶保持', '采样周期', '多变量系统', '数字控制器'],
   },
 };
 function presetTagsHTML(subject) {
@@ -1422,7 +1434,7 @@ document.getElementById('batchTag').onclick = () => {
 document.getElementById('batchSubject').onclick = () => {
   const v = cur();
   if (!v.selected.size) return alert('还没选任何项。');
-  const other = settings.subject === 'ss' ? 'dsp' : 'ss';
+  const other = settings.subject === 'ac' ? 'lc' : 'ac';
   if (!confirm(`把选中的 ${v.selected.size} 项改到「${SUBJECT[other]}」（${SUBJECT_SHORT[other]}）？改后它们会从当前列表里消失。`)) return;
   curItems().forEach(it => {
     if (v.selected.has(it.id)) { it.subject = other; it.updatedAt = Date.now(); }
@@ -1645,7 +1657,7 @@ function openEdit(it) {
     ${key === 'code' ? '<div class="f-lang"><span class="section-label">高亮预览</span><span class="badge-note" id="ef_codeLang"></span></div><div id="ef_codePreview"></div>' : ''}
   `).join('') + `
     <label class="f-label">标签（逗号分隔）</label>
-    <input id="ef_tags" class="field-input" type="text" placeholder="卷积, 傅里叶变换">
+    <input id="ef_tags" class="field-input" type="text" placeholder="根轨迹, 劳斯判据">
     <div id="editPreset"></div>
   `;
   for (const key of Object.keys(d.fieldLabels)) document.getElementById('ef_' + key).value = it[key] || '';
@@ -1738,12 +1750,12 @@ function downloadBlob(name, blob) {
   a.click();
   URL.revokeObjectURL(a.href);
 }
-const FILE_BASE = '信号与系统DSP复习本';
+const FILE_BASE = '自控 · 线控 复习本';
 
 // 体积小的纯文字备份（不含配图）
 document.getElementById('exportBtn').onclick = () => {
   const payload = {
-    version: 2, app: 'ss-dsp-review-book',
+    version: 2, app: 'ac-lc-review-book',
     questions: stores.q.items, knowledge: stores.k.items,
   };
   downloadBlob(`${FILE_BASE}-${dateStamp()}.json`,
@@ -1755,7 +1767,7 @@ document.getElementById('exportBtn').onclick = () => {
 // 完整备份：把配图以 base64 一并写入，换设备后可完整还原
 document.getElementById('exportFullBtn').onclick = async () => {
   settingsDrawer.classList.remove('open');
-  const payload = { version: 3, app: 'ss-dsp-review-book', questions: stores.q.items, knowledge: stores.k.items, images: {} };
+  const payload = { version: 3, app: 'ac-lc-review-book', questions: stores.q.items, knowledge: stores.k.items, images: {} };
   try {
     for (const id of referencedImageIds()) {
       const rec = await idbGet(id);
@@ -1888,8 +1900,8 @@ function renderStats() {
     </div>
     <div class="stat-card" style="margin-top:12px">
       <h3>科目分布</h3>
-      ${subLine('ss')}
-      ${subLine('dsp')}
+      ${subLine('ac')}
+      ${subLine('lc')}
     </div>
     <div class="stat-card" style="margin-top:12px">
       <h3>其他</h3>
@@ -2168,7 +2180,7 @@ window.addEventListener('resize', debounce(applySettings, 120));
 if (mqDark.addEventListener) mqDark.addEventListener('change', applySettings);
 if (mqMotion.addEventListener) mqMotion.addEventListener('change', applySettings);
 
-/* ===================== 速查表（变换对 / 性质 / 连续↔离散） ===================== */
+/* ===================== 速查表（变换对 / 性质·判据 / 对照） ===================== */
 const refDrawer = document.getElementById('refDrawer');
 const refList = document.getElementById('refList');
 const refMsg = document.getElementById('refMsg');
@@ -2176,13 +2188,10 @@ const refSearchEl = document.getElementById('refSearch');
 const refTabsEl = document.getElementById('refTabs');
 let refTab = 'pairs';
 
-const REF_GROUP_LABEL = {
-  ctft: '连续时间傅里叶变换（CTFT）',
-  laplace: '拉普拉斯变换',
-  z: 'Z 变换',
-  dft: '离散傅里叶变换（DFT / DTFT）',
-};
-const PROP_ROWS = [['ctft', '连续 FT'], ['laplace', '拉普拉斯'], ['z', 'Z 变换']];
+// 分组 / 列标签直接取自数据模块（transforms.js），避免与数据契约脱节
+const REF_GROUP_LABEL = (typeof MQT !== 'undefined' && MQT.GROUP_LABEL) || {};
+const PROP_LABEL = (typeof MQT !== 'undefined' && MQT.PROP_LABEL) || {};
+const PROP_ROWS = ['time', 'freq', 'ss'].map(k => [k, PROP_LABEL[k] || k]);
 
 function katexInline(latex) {
   try { return katex.renderToString(latex, { throwOnError: false }); }
@@ -2215,29 +2224,29 @@ function renderRef() {
   }
 
   if (refTab === 'props' || refTab === 'all') {
-    parts.push(`<div class="ref-group">变换性质（${res.props.length}）</div>`);
+    parts.push(`<div class="ref-group">性质 / 判据（${res.props.length}）</div>`);
     if (!res.props.length) parts.push('<div class="ref-note">没有匹配的性质。</div>');
     res.props.forEach(p => {
       const rows = PROP_ROWS.filter(([k]) => p[k]);
       parts.push(`
         <div class="ref-item">
           <div class="ref-head">${esc(p.name)}</div>
-          ${rows.map(([k, l]) => `<div class="ref-sub">${l}</div><div class="ref-latex">${katexInline(p[k])}</div>`).join('')}
+          ${rows.map(([k, l]) => `<div class="ref-sub">${esc(l)}</div><div class="ref-latex">${katexInline(p[k])}</div>`).join('')}
           ${p.note ? `<div class="ref-note">${esc(p.note)}</div>` : ''}
         </div>`);
     });
   }
 
   if (refTab === 'contrast' || refTab === 'all') {
-    parts.push(`<div class="ref-group">连续 ↔ 离散 对照（${res.contrasts.length}）</div>`);
+    parts.push(`<div class="ref-group">对照（${res.contrasts.length}）</div>`);
     if (!res.contrasts.length) parts.push('<div class="ref-note">没有匹配的对照项。</div>');
     res.contrasts.forEach(c => parts.push(`
       <div class="ref-item">
         <div class="ref-head">${esc(c.concept)}</div>
-        <div class="ref-sub">连续时间</div>
-        <div class="ref-latex">${katexInline(c.cont)}</div>
-        <div class="ref-sub">离散时间</div>
-        <div class="ref-latex">${katexInline(c.disc)}</div>
+        <div class="ref-sub">${esc(c.lLabel)}</div>
+        <div class="ref-latex">${katexInline(c.left)}</div>
+        <div class="ref-sub">${esc(c.rLabel)}</div>
+        <div class="ref-latex">${katexInline(c.right)}</div>
         ${c.note ? `<div class="ref-note">${esc(c.note)}</div>` : ''}
       </div>`));
   }
@@ -2261,7 +2270,7 @@ refTabsEl.querySelectorAll('button').forEach(b => {
   };
 });
 
-/* ===================== 绘图（波形 / 频谱 / 波特图 / 零极图 / 卷积图解） ===================== */
+/* ===================== 绘图（时域响应 / Bode 图 / 奈奎斯特 / 根轨迹 / 零极点图 / 卷积图解） ===================== */
 const plotDrawer = document.getElementById('plotDrawer');
 const plotKindEl = document.getElementById('plotKind');
 const plotFieldsEl = document.getElementById('plotFields');
@@ -2271,7 +2280,7 @@ const plotConvCtl = document.getElementById('plotConvCtl');
 const convShiftEl = document.getElementById('convShift');
 const convShiftVal = document.getElementById('convShiftVal');
 
-let plotKind = 'ct';
+let plotKind = 'step';
 let plotTarget = null;      // null | 'add' | 'edit'：绘图后「存为配图」的目标
 let convCtl = null;
 let convPlaying = false;
@@ -2281,30 +2290,13 @@ const plotSampleIdx = {};
 const plotCache = {};       // 记录各图型上次填写的参数，重新打开时不至于回到默认值
 
 const PLOT_FIELDS = {
-  ct: [
-    { id: 'expr', label: '表达式 x(t)', val: 'sin(2*pi*t)*u(t)', wide: true },
-    { id: 'tMin', label: 't 下限', val: '-2' },
-    { id: 'tMax', label: 't 上限', val: '5' },
+  step: [
+    { id: 'resp', label: '响应类型', val: 'step', type: 'select',
+      opts: [['step', '单位阶跃响应 y(t)'], ['impulse', '单位冲激响应 h(t)']] },
+    { id: 'num', label: '分子系数（高次→常数）', val: '[10]', wide: true },
+    { id: 'den', label: '分母系数', val: '[1, 2, 10]', wide: true },
+    { id: 'tMax', label: 't 上限', val: '6' },
     { id: 'samples', label: '采样点数', val: '800' },
-    { id: 'label', label: '图注（可选）', val: '', wide: true },
-  ],
-  dt: [
-    { id: 'expr', label: '表达式 x[n]', val: '0.8^n*u(n)', wide: true },
-    { id: 'nMin', label: 'n 下限', val: '-2' },
-    { id: 'nMax', label: 'n 上限', val: '15' },
-    { id: 'label', label: '图注（可选）', val: '', wide: true },
-  ],
-  spectrum: [
-    { id: 'from', label: '来源', val: 'time', type: 'select',
-      opts: [['time', '由序列 x[n] 做 DFT'], ['expr', '直接给频谱表达式（变量 w）']] },
-    { id: 'mode', label: '绘制', val: 'mag', type: 'select',
-      opts: [['mag', '幅度谱'], ['phase', '相位谱'], ['both', '幅相两图（仅表达式）']] },
-    { id: 'expr', label: '表达式', val: '0.8^n', wide: true },
-    { id: 'nMin', label: '(序列) n 下限', val: '0' },
-    { id: 'nMax', label: '(序列) n 上限', val: '7' },
-    { id: 'kMax', label: 'DFT 点数 kMax', val: '7' },
-    { id: 'wMin', label: '(表达式) ω 下限', val: '0' },
-    { id: 'wMax', label: '(表达式) ω 上限', val: '10' },
     { id: 'label', label: '图注（可选）', val: '', wide: true },
   ],
   bode: [
@@ -2317,10 +2309,25 @@ const PLOT_FIELDS = {
     { id: 'samples', label: '采样点数', val: '400' },
     { id: 'label', label: '图注（可选）', val: '', wide: true },
   ],
+  nyquist: [
+    { id: 'num', label: '开环分子系数（高次→常数）', val: '[10]', wide: true },
+    { id: 'den', label: '开环分母系数', val: '[1, 2, 10]', wide: true },
+    { id: 'wMin', label: 'ω 下限', val: '0.01' },
+    { id: 'wMax', label: 'ω 上限', val: '100' },
+    { id: 'samples', label: '采样点数', val: '600' },
+    { id: 'label', label: '图注（可选）', val: '', wide: true },
+  ],
+  rootlocus: [
+    { id: 'num', label: '开环分子系数（高次→常数）', val: '[1]', wide: true },
+    { id: 'den', label: '开环分母系数', val: '[1, 3, 2, 0]', wide: true },
+    { id: 'kMax', label: '增益 K 上限（0 → K）', val: '50' },
+    { id: 'samples', label: '采样点数', val: '220' },
+    { id: 'label', label: '图注（可选）', val: '', wide: true },
+  ],
   polezero: [
-    { id: 'num', label: '分子系数', val: '[1, -0.2]', wide: true },
-    { id: 'den', label: '分母系数', val: '[1, -0.9]', wide: true },
-    { id: 'domain', label: '域', val: 'z', type: 'select',
+    { id: 'num', label: '分子系数', val: '[1, 2]', wide: true },
+    { id: 'den', label: '分母系数', val: '[1, 3, 2]', wide: true },
+    { id: 'domain', label: '域', val: 's', type: 'select',
       opts: [['s', 's 域（左半平面 → 稳定）'], ['z', 'z 域（单位圆内 → 稳定）']] },
     { id: 'label', label: '图注（可选）', val: '', wide: true },
   ],
@@ -2379,18 +2386,10 @@ function snapshotPlotFields() {
 function readPlotSpec() {
   const dark = effectiveTheme() === 'dark';
   const n = id => Number(getFieldVal(id));
-  if (plotKind === 'ct') return { kind: 'ct', expr: getFieldVal('expr'), tMin: n('tMin'), tMax: n('tMax'), samples: n('samples'), label: getFieldVal('label'), dark };
-  if (plotKind === 'dt') return { kind: 'dt', expr: getFieldVal('expr'), nMin: n('nMin'), nMax: n('nMax'), label: getFieldVal('label'), dark };
-  if (plotKind === 'spectrum') {
-    const from = getFieldVal('from') === 'expr' ? 'expr' : 'time';
-    return {
-      kind: 'spectrum', from, mode: getFieldVal('mode'),
-      expr: getFieldVal('expr'), var: from === 'time' ? 'n' : 'w',
-      nMin: n('nMin'), nMax: n('nMax'), kMax: n('kMax'),
-      wMin: n('wMin'), wMax: n('wMax'), samples: 400, label: getFieldVal('label'), dark,
-    };
-  }
+  if (plotKind === 'step') return { kind: 'step', resp: getFieldVal('resp') === 'impulse' ? 'impulse' : 'step', num: parseCoeffs(getFieldVal('num')), den: parseCoeffs(getFieldVal('den')), tMax: n('tMax'), samples: n('samples'), label: getFieldVal('label'), dark };
   if (plotKind === 'bode') return { kind: 'bode', num: parseCoeffs(getFieldVal('num')), den: parseCoeffs(getFieldVal('den')), domain: getFieldVal('domain'), wMin: n('wMin'), wMax: n('wMax'), samples: n('samples'), label: getFieldVal('label'), dark };
+  if (plotKind === 'nyquist') return { kind: 'nyquist', num: parseCoeffs(getFieldVal('num')), den: parseCoeffs(getFieldVal('den')), wMin: n('wMin'), wMax: n('wMax'), samples: n('samples'), label: getFieldVal('label'), dark };
+  if (plotKind === 'rootlocus') return { kind: 'rootlocus', num: parseCoeffs(getFieldVal('num')), den: parseCoeffs(getFieldVal('den')), kMax: n('kMax'), samples: n('samples'), label: getFieldVal('label'), dark };
   if (plotKind === 'polezero') return { kind: 'polezero', num: parseCoeffs(getFieldVal('num')), den: parseCoeffs(getFieldVal('den')), domain: getFieldVal('domain'), label: getFieldVal('label'), dark };
   if (plotKind === 'conv') return { kind: 'conv', mode: getFieldVal('mode') === 'discrete' ? 'discrete' : 'continuous', exprA: getFieldVal('exprA'), exprB: getFieldVal('exprB'), varMin: n('varMin'), varMax: n('varMax'), samples: n('samples'), dark };
   return { kind: plotKind, dark };
@@ -2546,7 +2545,7 @@ document.getElementById('convPlay').onclick = () => {
 
 /* ===================== AI 识题（可选功能，仅此功能需要联网） =====================
    上传题目图片 → 调用你所选服务商的视觉模型 → 按固定格式返回 → 你核对后导入。
-   API Key 仅存本机 localStorage（键 sd_ai）：不写入导出备份，也不进仓库。
+   API Key 仅存本机 localStorage（键 ac_ai）：不写入导出备份，也不进仓库。
    支持三种协议：OpenAI 兼容 / Google Gemini / Anthropic Claude。 */
 const AI_PRESETS = [
   { id: 'gemini', name: 'Google Gemini', protocol: 'gemini',
@@ -2662,14 +2661,14 @@ const aiNoun = () => active === 'q' ? '题目' : '知识点';
 function aiOcrPrompt() {
   const n = aiNoun();
   return [
-    `你是《信号与系统 / 数字信号处理》的${n}识别助手。用户会给你一张图片（拍照或截图）。`,
-    `请只把图中的${n}**原文**准确转录出来，不要解答，也不要添加任何解析、答案或说明。`,
+    `你是《自动控制原理 / 线性控制系统》的${n}识别助手。用户会给你一张图片（拍照或截图）。`,
+    `请只把图中的${n}原文准确转录出来，不要解答，也不要添加任何解析、答案或说明。`,
     '要求：',
     '1. 只输出原文本身，不要输出【】这类标记，不要标题，不要任何解释；',
     '2. 公式一律使用 LaTeX：行内公式用 $...$，独立公式用 $$...$$；',
-    '   注意：矩阵、方程组、分段函数、多行推导等会跨行的公式必须用 $$...$$ 包裹，$...$ 不能跨行；',
-    '3. 符号按课程惯例书写：连续时间用 $t$、$x(t)$、$X(j\\omega)$、$\\mathrm{u}(t)$、$\\delta(t)$；',
-    '   离散时间用 $n$、$x[n]$、$X(e^{j\\omega})$、$H(z)$、$u[n]$、$\\delta[n]$；',
+    '   注意：矩阵、方程组、状态方程、多行推导等会跨行的公式必须用 $$...$$ 包裹，$...$ 不能跨行；',
+    '3. 符号按控制课程惯例书写：经典控制常用 $s$、$G(s)$、$\\omega$、$\\zeta$、$\\omega_n$；',
+    '   现代控制常用 $\\dot{x}=Ax+Bu$、$A$、$B$、$C$、$e^{At}$；矩阵换行用 \\\\，列用 &；',
     '4. 图中若有 MATLAB / Python 代码，请先单独写一行标明语言（如 MATLAB 或 Python），再原样逐行转录；',
     `5. 图中若有多道${n}，它们之间用单独一行 === 分隔；`,
     '6. 若图中没有可识别的内容，就只回答：未识别到内容。',
@@ -2682,14 +2681,14 @@ function aiOutputRules() {
   const base = [
     '1. 只输出固定格式的内容，不要输出任何解释、寒暄或标题；',
     '2. 不要用 ``` 代码块把整体包裹起来；',
-    '3. 公式一律使用 LaTeX：行内公式用 $...$，独立公式用 $$...$$；矩阵、方程组、分段函数、多行推导等会跨行的公式必须用 $$...$$ 包裹（$...$ 不能跨行）；矩阵换行用 \\\\，列用 &，例如 $$\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}$$；',
+    '3. 公式一律使用 LaTeX：行内公式用 $...$，独立公式用 $$...$$；矩阵、方程组、状态方程、多行推导等会跨行的公式必须用 $$...$$ 包裹（$...$ 不能跨行）；矩阵换行用 \\\\，列用 &，例如 $$\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}$$；',
     '4. 不要使用 Markdown 语法：不要 **加粗**、不要 # 标题、不要 - 或 * 列表、不要 | 表格；需要分步就用行首「第 1 步：」这类前缀，每一步单独成行；',
   ];
   const steps = active === 'q' ? [
     '5. 【解析】必须逐步详解，不要一步抛出答案：',
-    '   · 每一步都写清三件事：这一步在做什么、依据是什么（用到的定理/性质名称，如卷积定理、时移与频移性质、Z 变换收敛域，公式写成 LaTeX）、这一步得到的结果；',
-    '   · 不要跳步：代入与化简、换元时积分上下限的改写（如 $\\tau=t-n$）、部分分式展开、长除法、求和上下限的调整等中间步骤都要写出来，必要时用 $$...$$ 展示推导；',
-    '   · 连续系统注明所用的变换与收敛域；离散系统注明 ROC 与稳定性判定（因果系统极点须全在单位圆内）；',
+    '   · 每一步都写清三件事：这一步在做什么、依据是什么（写清所用判据/方法名称，如劳斯判据、赫尔维茨判据、根轨迹绘制法则、Bode 图、奈奎斯特判据、幅值/相角裕度、稳态误差系数，或状态空间能控能观秩判据、极点配置、李雅普诺夫方程、观测器设计，公式写成 LaTeX）、这一步得到的结果；',
+    '   · 不要跳步：列写闭环特征方程、列劳斯表、求根轨迹分离点与渐近线、由幅频相频求稳定裕度、算稳态误差、写状态空间与能控能观矩阵、解李雅普诺夫方程、配置极点/观测器极点等中间步骤都要写出来，必要时用 $$...$$ 展示推导；',
+    '   · 经典控制要说明所用判据与结论（闭环稳定性、稳定裕度、稳态误差）；现代控制要说明所用方法（能控/能观性秩判据、李雅普诺夫方程、极点配置、观测器），并给出矩阵结果；',
     '   · 每一步单独成行，行首用「第 1 步：」「第 2 步：」这样的前缀；',
     '6. 【知识点】写清「定义 + 物理含义 + 典型用法 + 易错点」，公式用 LaTeX，必要时用 $$...$$ 展示推导；',
     '7. 若题解用得到 MATLAB 或 Python，把可直接运行的代码原样放进【代码】段（不要放进公式里）；',
@@ -2698,8 +2697,8 @@ function aiOutputRules() {
     '10. 【我的错误答案】是留给用户自己填的，请保持为空、不要输出该段内容。',
   ] : [
     '5. 【讲解】必须逐步讲透，不要只给结论：',
-    '   · 先给定义（写成 LaTeX），再说明物理含义（从信号或系统层面怎么理解）；',
-    '   · 再给典型用法与一个示范，示范同样逐步写清在做什么、依据是什么、得到什么，必要时注明 ROC 与稳定性；',
+    '   · 先给定义（写成 LaTeX），再说明物理含义（从经典控制或现代控制层面怎么理解）；',
+    '   · 再给典型用法与一个示范，示范同样逐步写清在做什么、依据是什么、得到什么，必要时注明稳定性判据与稳定裕度（经典控制），或能控能观与极点配置（现代控制）；',
     '   · 最后写易错点；每一步单独成行，行首用「第 1 步：」「第 2 步：」这样的前缀；',
     '6. 上面的原文里若含多项（以 === 分隔），输出的每一项与之一一对应；',
     '7. 不要改动原文的内容，只在其基础上补充讲解与整理。',
@@ -2727,7 +2726,7 @@ function aiPromptText() {
     ? `一道《${curSubjectName()}》题目`
     : `一个《${curSubjectName()}》知识点（含讲解）`;
   return [
-    `请扮演《信号与系统 / 数字信号处理》课程的助教。下面我会把${what}发给你（可以直接发图片），`,
+    `请扮演《自动控制原理 / 线性控制系统》课程的助教。下面我会把${what}发给你（可以直接发图片），`,
     '请你把它整理成可直接导入我复习本的固定格式。',
     '',
     '输出要求：',
@@ -2739,6 +2738,7 @@ function aiPromptText() {
     '现在请等我发送内容。',
   ]).join('\n');
 }
+
 aiEl('aiPromptBtn').onclick = async () => {
   const ok = await copyText(aiPromptText());
   aiEl('aiMsg').textContent = ok ? '提示词已复制，去任意 AI 粘贴即可' : '复制失败，请手动复制';

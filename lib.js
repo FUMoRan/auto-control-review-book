@@ -1,5 +1,5 @@
 /* =========================================================
-   数学复习本 · lib.js
+   自控 · 线控 复习本 · lib.js
    纯逻辑（无 DOM 依赖）：状态、解析、归一化、相似度、SRS、搜索语法。
    浏览器以经典脚本加载（挂到 window.MQ）；Node 下可作为模块被单测引用。
    ========================================================= */
@@ -12,9 +12,9 @@
 
   const DAY = 86400000;
 
-  /* ---------- 科目（信号与系统 / 数字信号处理两门课合为一个站点，用顶部切换，数据以 subject 字段分区） ---------- */
-  const SUBJECT = { ss: '信号与系统', dsp: '数字信号处理' };
-  const SUBJECT_SHORT = { ss: 'S&S', dsp: 'DSP' };
+  /* ---------- 科目（自动控制原理 / 线性控制系统两门课合为一个站点，用顶部切换，数据以 subject 字段分区） ---------- */
+  const SUBJECT = { ac: '自动控制原理', lc: '线性控制系统' };
+  const SUBJECT_SHORT = { ac: '自控', lc: '线控' };
 
   /* ---------- 状态 ---------- */
   const STATUS = { new: '未复习', reviewing: '复习中', mastered: '已掌握' };
@@ -94,7 +94,7 @@
     const o = it && typeof it === 'object' ? it : {};
     return {
       id: o.id || uid(),
-      subject: SUBJECT[o.subject] ? o.subject : 'ss',
+      subject: SUBJECT[o.subject] ? o.subject : 'ac',
       stem: typeof o.stem === 'string' ? o.stem : '',
       analysis: typeof o.analysis === 'string' ? o.analysis : '',
       knowledge: typeof o.knowledge === 'string' ? o.knowledge : '',
@@ -114,7 +114,7 @@
     const o = it && typeof it === 'object' ? it : {};
     return {
       id: o.id || uid(),
-      subject: SUBJECT[o.subject] ? o.subject : 'ss',
+      subject: SUBJECT[o.subject] ? o.subject : 'ac',
       title: typeof o.title === 'string' ? o.title : '',
       content: typeof o.content === 'string' ? o.content : '',
       tags: Array.isArray(o.tags) ? o.tags.filter(t => typeof t === 'string' && t.trim()) : [],
