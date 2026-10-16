@@ -45,7 +45,7 @@
   <button id="randomBtn">随机一题</button>
   <button id="cramBtn">背题模式</button>
   <button id="refBtn" title="常用变换对 · 性质与判据 · 对照">📐 速查</button>
-  <button id="plotBtn" title="阶跃响应 / Bode / 奈奎斯特 / 根轨迹 / 零极图 / 卷积图解">📈 绘图</button>
+  <button id="plotBtn" title="时域响应 / Bode / 奈奎斯特 / 尼科尔斯 / 根轨迹 / 零极图 / 状态响应 / 相平面">📈 绘图</button>
   <button id="exportBtn">导出</button>
   <button id="importBtn2">导入</button>
   <button class="primary" id="addBtn">+ 新增错题</button>
@@ -192,7 +192,7 @@
   </div>
 </div>
 
-<!-- 绘图面板：阶跃响应 / Bode / 奈奎斯特 / 根轨迹 / 零极图 / 卷积图解 -->
+<!-- 绘图面板：时域响应 / Bode / 奈奎斯特 / 尼科尔斯 / 根轨迹 / 零极图 / 状态响应 / 相平面 -->
 <div class="drawer" id="plotDrawer">
   <div class="drawer-panel">
     <div class="row" style="margin:0 0 8px">
@@ -204,17 +204,14 @@
       <button data-kind="step" class="on">时域响应</button>
       <button data-kind="bode">Bode 图</button>
       <button data-kind="nyquist">奈奎斯特</button>
+      <button data-kind="nichols">尼科尔斯</button>
       <button data-kind="rootlocus">根轨迹</button>
       <button data-kind="polezero">零极点图</button>
-      <button data-kind="conv">卷积图解</button>
+      <button data-kind="state">状态响应</button>
+      <button data-kind="phase">相平面</button>
     </div>
     <div id="plotFields"></div>
     <canvas id="plotCanvas" width="900" height="380"></canvas>
-    <div class="row" id="plotConvCtl" style="display:none">
-      <button id="convPlay">▶ 播放</button>
-      <input type="range" id="convShift" min="0" max="100" value="0">
-      <span class="badge-note" id="convShiftVal">τ = 0</span>
-    </div>
     <div class="row">
       <button class="primary" id="plotRender">绘制</button>
       <button id="plotSample">载入示例</button>
@@ -224,8 +221,8 @@
     </div>
     <p class="setnote">
       参数用纯文本写：传递函数按系数输入，例如分子 <code>[1]</code>、分母 <code>[1, 3, 2]</code> 表示 $1/(s^2+3s+2)$；
-      卷积图解用表达式，变量 <b>t</b>（连续）、<b>n</b>（离散），可用
-      <b>sin cos exp sqrt u() rect() tri()</b>，常量 <b>pi</b>。
+      状态响应 / 相平面用矩阵，如 <code>A = 0, 1; -2, -3</code>（分号换行）、<code>B = 0; 1</code>、<code>C = 1, 0</code>，
+      相平面留空 A 时改用传递函数（分母写二阶）。
     </p>
   </div>
 </div>
@@ -441,7 +438,6 @@
 <script src="./vendor/katex/katex.min.js"></script>
 <script src="./lib.js"></script>
 <script src="./plot.js"></script>
-<script src="./conv.js"></script>
 <script src="./code.js"></script>
 <script src="./transforms.js"></script>
 <script src="./gen.js"></script>

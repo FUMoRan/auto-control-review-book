@@ -4,16 +4,16 @@
 
    设计要点
    ---------
-   1) 纯逻辑（表达式解析/编译、polyRoots、evalPoly、polyMul/polyAdd、dft、dtft）
-      与 DOM 完全无关，可在 Node 下直接单测；绘图（drawPlot）只在【被调用时】
-      接触 canvas，文件顶层不执行任何 canvas 代码。
+   1) 纯逻辑（表达式解析/编译、polyRoots、evalPoly、polyMul/polyAdd、频域响应、
+      可控标准型建模、四阶龙格库塔积分）与 DOM 完全无关，可在 Node 下直接单测；
+      绘图（drawPlot）只在【被调用时】接触 canvas，文件顶层不执行任何 canvas 代码。
    2) 浏览器以经典脚本加载：<script src="./plot.js"></script>，命名空间挂到 window.MQP。
       同时兼容 Node：const MQP = require('./plot.js')。
       使用 import/export、任何构建工具或外部库/ CDN 均被禁止。
 
-   —— 入口约定（供 conv.js 复用）——
+   —— 表达式编译约定（供需要表达式求值的图型复用）——
    MQP.compileExpr(src) 必须【返回一个函数】f(vars)：
-     * vars 形如 {t:1.5} / {n:3} / {w:2}，返回 number；
+     * vars 形如 {t:1.5} / {w:2}，返回 number；
      * 表达式非法时抛 new Error('中文说明')；绝不返回对象，也绝不返回 null/undefined。
    MQP.tryCompileExpr(src) 返回 {ok:true, fn} 或 {ok:false, error:'中文说明'}。
    ========================================================= */
@@ -27,12 +27,12 @@
   /* =========================================================
      一、表达式解析与编译（纯函数）
      支持：数字（含科学计数法）、+ - * / ^、括号、一元负号；
-           常量 pi/PI/e；变量 t/n/w(omega)/f；
-           一元函数 sin…round；信号 u/rect/tri/sinc/delta。
+           常量 pi/PI/e；变量 t/w(omega)；
+           一元函数 sin…round。
      ========================================================= */
   const CONSTS = { pi: Math.PI, PI: Math.PI, e: Math.E };
   // 变量别名：omega 归一到 w
-  const VAR_NAMES = { t: 't', n: 'n', w: 'w', omega: 'w', f: 'f' };
+  const VAR_NAMES = { t: 't', w: 'w', omega: 'w' };
 
   const FUNCS = {
     sin: Math.sin, cos: Math.cos, tan: Math.tan,
@@ -42,20 +42,6 @@
     ln: Math.log, log: Math.log, log10: Math.log10,
     sqrt: Math.sqrt, abs: Math.abs, sign: Math.sign,
     floor: Math.floor, ceil: Math.ceil, round: Math.round,
-    // 常用信号：x>0→1，x<0→0，x=0 取 1
-    u: function (x) { return x >= 0 ? 1 : 0; },
-    // 矩形：|x|<0.5 为 1
-    rect: function (x) { return Math.abs(x) < 0.5 ? 1 : 0; },
-    // 三角形：|x|<=1 时 1-|x|
-    tri: function (x) { return Math.abs(x) <= 1 ? 1 - Math.abs(x) : 0; },
-    // 归一化 sinc：sin(pi x)/(pi x)，x=0 取 1
-    sinc: function (x) {
-      if (x === 0) return 1;
-      const p = Math.PI * x;
-      return Math.sin(p) / p;
-    },
-    // 单位冲击：x=0 为 1（绘图时按窄脉冲近似）
-    delta: function (x) { return x === 0 ? 1 : 0; },
   };
 
   // 词法分析
@@ -324,40 +310,7 @@
   }
 
   /* =========================================================
-     三、DFT / DTFT（纯函数）
-     ========================================================= */
-  // 长度 N 的序列 x（按 n=0..N-1）做 DFT，返回 k=0..kMax 的 {k,re,im,mag,phase}
-  function dft(seq, kMax) {
-    const x = Array.isArray(seq) ? seq.map(Number) : [];
-    const N = x.length;
-    if (!N) return [];
-    const km = (kMax == null) ? N - 1 : Math.max(0, Math.floor(kMax));
-    const out = [];
-    for (let k = 0; k <= km; k++) {
-      let re = 0, im = 0;
-      for (let i = 0; i < N; i++) {
-        const ang = -2 * Math.PI * k * i / N;
-        re += x[i] * Math.cos(ang);
-        im += x[i] * Math.sin(ang);
-      }
-      out.push({ k: k, re: re, im: im, mag: Math.hypot(re, im), phase: Math.atan2(im, re) });
-    }
-    return out;
-  }
-
-  // 对上升沿系数（x[0..N-1]）在给定 w 处求 DTFT：X(w)=Σ x[n] e^{-jwn}
-  function dtft(coeffs, w) {
-    const a = toCoeffs(coeffs);
-    let re = 0, im = 0;
-    for (let n = 0; n < a.length; n++) {
-      re += a[n] * Math.cos(w * n);
-      im -= a[n] * Math.sin(w * n);
-    }
-    return { re: re, im: im, mag: Math.hypot(re, im), phase: Math.atan2(im, re) };
-  }
-
-  /* =========================================================
-     四、绘图（仅在 drawPlot 被调用时接触 canvas；Node 下安全降级）
+     三、绘图（仅在 drawPlot 被调用时接触 canvas；Node 下安全降级）
      ========================================================= */
   function getCtx(canvas) {
     if (!canvas || typeof canvas.getContext !== 'function') return null;
@@ -560,13 +513,46 @@
   }
 
   /* =========================================================
-     以下为控制课程用图型：时域响应 / 奈奎斯特 / 根轨迹
+     以下为控制课程用图型：时域响应 / Bode / 奈奎斯特 / 尼科尔斯 /
+     根轨迹 / 零极点 / 状态响应 / 相平面
      ========================================================= */
 
   // 频率响应 H(jω)（s 域）或 H(e^{jω})（z 域）
   function freqResp(numC, denC, w, domain) {
     const z = domain === 'z' ? { re: Math.cos(w), im: Math.sin(w) } : { re: 0, im: w };
     return cdiv(evalPoly(numC, z), evalPoly(denC, z));
+  }
+
+  // 相位按 180° 跳变展开成连续曲线（频域图用）
+  function unwrapPhase(pts) {
+    const out = [];
+    let off = 0, prev = null;
+    for (let i = 0; i < pts.length; i++) {
+      const raw = pts[i];
+      if (prev != null) {
+        let d = raw - prev;
+        if (d > 180) off -= 360; else if (d < -180) off += 360;
+      }
+      out.push(raw + off);
+      prev = raw;
+    }
+    return out;
+  }
+
+  // 多条曲线时用的配色
+  function palette(n) {
+    const base = ['#1b7fe0', '#d63b5e', '#2e9e4f', '#e08a2e', '#7048c4', '#0f9aa8', '#b0308f', '#5b6d7f'];
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      out.push(i < base.length ? base[i] : 'hsl(' + Math.round((i * 137.508) % 360) + ',62%,48%)');
+    }
+    return out;
+  }
+
+  // 2×2 / 1×n 等矩阵的文本形式（标注用）
+  function matText(M) {
+    if (!Array.isArray(M)) return String(M);
+    return '[' + M.map(function (r) { return Array.isArray(r) ? r.join(' ') : String(r); }).join('; ') + ']';
   }
 
   // 把降幂系数写成纯文本多项式，如 [1, 3, 2] + 's' → "s^2 + 3s + 2"
@@ -614,53 +600,63 @@
     return { A: A, B: B, C: C, D: b[0], n: n };
   }
 
-  // 四阶龙格库塔积分 ẋ = Ax + Bu（u 为空表示 u≡0）→ { xs, dt }
-  function integrateRK4(sys, x0, tMax, N, constU) {
+  // 四阶龙格库塔积分 ẋ = Ax + Bu（u 为空表 u≡0，可为常数或 t 的函数）→ { xs, dt }
+  function integrateRK4(sys, x0, tMax, N, uFn) {
     const n = sys.n, A = sys.A, B = sys.B;
     const dt = tMax / N;
+    const uAt = function (t) {
+      if (typeof uFn === 'function') return uFn(t);
+      return (uFn == null) ? 0 : uFn;
+    };
     const mul = function (v) {
       const out = new Array(n).fill(0);
       for (let i = 0; i < n; i++) { let s = 0; for (let j = 0; j < n; j++) s += A[i][j] * v[j]; out[i] = s; }
       return out;
     };
     const step = function (p, q, k) { return p.map(function (v, i) { return v + k * q[i]; }); };
-    const f = function (x) {
+    const f = function (x, t) {
       const Ax = mul(x);
-      if (constU == null) return Ax;
-      return Ax.map(function (v, i) { return v + B[i] * constU; });
+      const u = uAt(t);
+      if (!u) return Ax;
+      return Ax.map(function (v, i) { return v + B[i] * u; });
     };
     const xs = [x0.slice()];
     let x = x0.slice();
     for (let i = 0; i < N; i++) {
-      const k1 = f(x);
-      const k2 = f(step(x, k1, dt / 2));
-      const k3 = f(step(x, k2, dt / 2));
-      const k4 = f(step(x, k3, dt));
+      const t = i * dt;
+      const k1 = f(x, t);
+      const k2 = f(step(x, k1, dt / 2), t + dt / 2);
+      const k3 = f(step(x, k2, dt / 2), t + dt / 2);
+      const k4 = f(step(x, k3, dt), t + dt);
       x = x.map(function (v, j) { return v + dt / 6 * (k1[j] + 2 * k2[j] + 2 * k3[j] + k4[j]); });
       xs.push(x.slice());
     }
     return { xs: xs, dt: dt };
   }
 
-  // 时域响应：单位阶跃 / 单位冲激
+  // 时域响应：单位阶跃 / 单位冲激（初值法近似）/ 单位斜坡
   function drawStep(ctx, W, H, s, th) {
     const box = panelBox(W, H, { l: 60, r: 20, t: 28, b: 38 });
-    const impulse = s.resp === 'impulse';
+    const resp = (s.resp === 'impulse' || s.resp === 'ramp') ? s.resp : 'step';
+    const impulse = resp === 'impulse';
+    const isRamp = resp === 'ramp';
     const tMax = num(s.tMax, 10);
     const N = Math.max(20, Math.floor(num(s.samples, 600)));
     let sys;
     try { sys = ssFromTF(s.num, s.den); }
     catch (e) { notice(ctx, box, '系数错误：' + e.message, th); return; }
 
-    // 单位阶跃：零初值 + 常值输入；单位冲激：h(t)=C e^{At} B → 初值取 B、输入取 0
+    // 阶跃/斜坡：零初值 + 相应输入；冲激：h(t)=C e^{At} B → 初值取 B、输入取 0
     const x0 = new Array(sys.n).fill(0);
     if (impulse) for (let i = 0; i < sys.n; i++) x0[i] = sys.B[i];
-    const sim = integrateRK4(sys, x0, tMax, N, impulse ? null : 1);
+    const uFn = impulse ? null : (isRamp ? function (t) { return t; } : 1);
+    const sim = integrateRK4(sys, x0, tMax, N, uFn);
 
     const pts = sim.xs.map(function (x, i) {
       let y = 0;
       for (let j = 0; j < sys.n; j++) y += sys.C[j] * x[j];
-      if (!impulse) y += sys.D;
+      const ut = impulse ? 0 : (isRamp ? i * sim.dt : 1);
+      y += sys.D * ut;
       return { x: i * sim.dt, y: isFinite(y) ? y : NaN };
     });
     let lo = Infinity, hi = -Infinity;
@@ -671,8 +667,8 @@
     const xr = [0, tMax];
 
     drawAxis(ctx, box, xr, yr, th, 't');
-    // y=1 参考线（稳态值，仅阶跃响应）
-    if (!impulse) {
+    // y = D 参考线（仅阶跃响应的稳态值）
+    if (resp === 'step') {
       const y1 = mapY(box, sys.D, yr[0], yr[1]);
       if (y1 > box.y && y1 < box.y + box.h) {
         ctx.save();
@@ -683,10 +679,10 @@
     }
     drawCurve(ctx, box, pts, xr, yr, th.curve, 1.8);
 
+    const defLabel = impulse ? '单位冲激响应 h(t)' : (isRamp ? '单位斜坡响应 y(t)' : '单位阶跃响应 y(t)');
     let peak = pts[0];
     pts.forEach(function (p) { if (isFinite(p.y) && p.y > peak.y) peak = p; });
-    drawLabel(ctx, box, (s.label || (impulse ? '单位冲激响应 h(t)' : '单位阶跃响应 y(t)'))
-      + '　' + tfText(s.num, s.den), th);
+    drawLabel(ctx, box, (s.label || defLabel) + '　' + tfText(s.num, s.den), th);
     ctx.fillStyle = th.muted;
     ctx.font = '12px sans-serif';
     ctx.textAlign = 'left'; ctx.textBaseline = 'top';
@@ -949,6 +945,245 @@
     ctx.fillText(msg, W / 2, H - 8);
   }
 
+  // 尼科尔斯图：横轴 ∠G(°)（连续展开），纵轴 20lg|G|(dB)，标出 (−180°, 0 dB) 临界点与裕度
+  function drawNichols(ctx, W, H, s, th) {
+    const box = panelBox(W, H, { l: 60, r: 20, t: 28, b: 38 });
+    const numC = trimLead(toCoeffs(s.num)), denC = trimLead(toCoeffs(s.den));
+    if (!numC.length || denC.length < 2) { notice(ctx, box, '系数错误：请填写开环真分式的分子/分母系数', th); return; }
+    const wMin = Math.max(1e-4, num(s.wMin, 0.01));
+    const wMax = num(s.wMax, 100);
+    const N = Math.max(20, Math.floor(num(s.samples, 600)));
+
+    const ws = [], phs = [], dbs = [];
+    for (let i = 0; i < N; i++) {
+      const w = wMin + (wMax - wMin) * i / (N - 1);
+      const h = freqResp(numC, denC, w, 's');
+      const mag = Math.hypot(h.re, h.im);
+      ws.push(w);
+      phs.push(Math.atan2(h.im, h.re) * 180 / Math.PI);
+      dbs.push(isFinite(mag) && mag > 0 ? 20 * Math.log10(mag) : -Infinity);
+    }
+    const uph = unwrapPhase(phs);
+    const pts = [];
+    for (let i = 0; i < N; i++) if (isFinite(uph[i]) && isFinite(dbs[i])) pts.push({ x: uph[i], y: dbs[i] });
+    if (!pts.length) { notice(ctx, box, '无法计算频率响应', th); return; }
+
+    let xLo = Infinity, xHi = -Infinity, yLo = Infinity, yHi = -Infinity;
+    pts.forEach(function (p) {
+      xLo = Math.min(xLo, p.x); xHi = Math.max(xHi, p.x);
+      yLo = Math.min(yLo, p.y); yHi = Math.max(yHi, p.y);
+    });
+    xLo = Math.min(xLo, -180); xHi = Math.max(xHi, 0);
+    yLo = Math.min(yLo, 0); yHi = Math.max(yHi, 0);
+    const xr = niceRange(xLo, xHi), yr = niceRange(yLo, yHi);
+    drawAxis(ctx, box, xr, yr, th, '∠G (°)');
+
+    // 关键线：−180°（相位交界）与 0 dB（幅值交界）
+    ctx.save();
+    ctx.strokeStyle = th.muted; ctx.lineWidth = 1; ctx.setLineDash([5, 4]);
+    const x180 = mapX(box, -180, xr[0], xr[1]);
+    if (x180 > box.x && x180 < box.x + box.w) { ctx.beginPath(); ctx.moveTo(x180, box.y); ctx.lineTo(x180, box.y + box.h); ctx.stroke(); }
+    const y0 = mapY(box, 0, yr[0], yr[1]);
+    if (y0 > box.y && y0 < box.y + box.h) { ctx.beginPath(); ctx.moveTo(box.x, y0); ctx.lineTo(box.x + box.w, y0); ctx.stroke(); }
+    ctx.restore();
+
+    drawCurve(ctx, box, pts, xr, yr, th.curve, 1.8);
+
+    // 临界点 (−180°, 0 dB)
+    const cx = mapX(box, -180, xr[0], xr[1]), cy = mapY(box, 0, yr[0], yr[1]);
+    if (cx > box.x && cx < box.x + box.w && cy > box.y && cy < box.y + box.h) {
+      ctx.save();
+      ctx.strokeStyle = th.pole; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx - 8, cy); ctx.lineTo(cx + 8, cy);
+      ctx.moveTo(cx, cy - 8); ctx.lineTo(cx, cy + 8); ctx.stroke();
+      ctx.restore();
+    }
+
+    // 相角裕度 γ 与幅值裕度 GM（与「稳定裕度」表同口径）
+    let wc = null, wg = null;
+    for (let i = 1; i < N; i++) {
+      const m0 = dbs[i - 1], m1 = dbs[i];
+      if (wc == null && ((m0 <= 0 && m1 >= 0) || (m0 >= 0 && m1 <= 0))) {
+        const t = Math.abs(m1 - m0) < 1e-15 ? 0.5 : Math.abs(m0) / (Math.abs(m0) + Math.abs(m1));
+        wc = ws[i - 1] + (ws[i] - ws[i - 1]) * t;
+      }
+      const g0 = uph[i - 1] + 180, g1 = uph[i] + 180;
+      if (wg == null && ((g0 <= 0 && g1 >= 0) || (g0 >= 0 && g1 <= 0))) {
+        const t = Math.abs(g1 - g0) < 1e-15 ? 0.5 : Math.abs(g0) / (Math.abs(g0) + Math.abs(g1));
+        wg = ws[i - 1] + (ws[i] - ws[i - 1]) * t;
+      }
+    }
+    let gamma = null, GM = null;
+    if (wc != null) {
+      const h = freqResp(numC, denC, wc, 's');
+      gamma = 180 + Math.atan2(h.im, h.re) * 180 / Math.PI;
+    }
+    if (wg != null) {
+      const h = freqResp(numC, denC, wg, 's');
+      const mag = Math.hypot(h.re, h.im);
+      if (mag > 0) GM = -20 * Math.log10(mag);
+    }
+    const r2 = x => Math.round(x * 100) / 100;
+
+    drawLabel(ctx, box, (s.label || '尼科尔斯图') + '　' + tfText(s.num, s.den), th);
+    ctx.fillStyle = th.muted;
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    ctx.fillText('相角裕度 γ = ' + (gamma != null ? r2(gamma) + '°' : '未找到')
+      + '　幅值裕度 GM = ' + (GM != null ? r2(GM) + ' dB' : '未找到')
+      + '　(−180°, 0 dB) 为临界点', W / 2, H - 8);
+  }
+
+  // 状态响应：由 A/B/C/D 积分 ẋ=Ax+Bu，画出各状态 x_i(t) 与输出 y(t)（现控用）
+  function normCol(M, n) {
+    if (M == null) return null;
+    if (!Array.isArray(M)) { const v = Number(M); return isFinite(v) ? new Array(n).fill(0).map(function (_, i) { return i === 0 ? v : 0; }) : null; }
+    if (Array.isArray(M[0])) return (M.length === n && M.every(function (r) { return Array.isArray(r) && r.length === 1; })) ? M.map(function (r) { return [Number(r[0])]; }) : null;
+    return M.length === n ? M.map(function (v) { return Number(v); }) : null;
+  }
+  function normRow(M, n) {
+    if (M == null) return null;
+    if (!Array.isArray(M)) { const v = Number(M); return isFinite(v) ? new Array(n).fill(0).map(function (_, i) { return i === 0 ? v : 0; }) : null; }
+    if (Array.isArray(M[0])) return (M.length === 1 && M[0].length === n) ? M[0].map(Number) : null;
+    return M.length === n ? M.map(Number) : null;
+  }
+  function drawStateResp(ctx, W, H, s, th) {
+    const box = panelBox(W, H, { l: 64, r: 20, t: 28, b: 38 });
+    const A = s.A;
+    if (!Array.isArray(A) || !A.length || (A[0] || []).length !== A.length) {
+      notice(ctx, box, '状态矩阵 A 必须是方阵，如 “0, 1; -2, -3”', th); return;
+    }
+    const n = A.length;
+    const B = normCol(s.B, n);
+    const C = normRow(s.C, n);
+    if (!B || !C) { notice(ctx, box, 'B（n×1 列）与 C（1×n 行）要和 A 同阶', th); return; }
+    const D = (s.D == null) ? 0 : (Array.isArray(s.D) ? Number((Array.isArray(s.D[0]) ? s.D[0][0] : s.D[0]) || 0) : Number(s.D));
+    const tMax = num(s.tMax, 10);
+    const N = Math.max(20, Math.floor(num(s.samples, 800)));
+    const mode = (s.u === 'impulse' || s.u === 'zero') ? s.u : 'step';
+
+    const x0 = new Array(n).fill(0);
+    if (mode === 'impulse') { for (let i = 0; i < n; i++) x0[i] = B[i][0]; }
+    else if (mode === 'zero') {
+      const z = Array.isArray(s.x0) ? s.x0 : [];
+      for (let i = 0; i < n; i++) x0[i] = isFinite(Number(z[i])) ? Number(z[i]) : 0;
+    }
+    const sys = { A: A.map(function (r) { return r.map(Number); }), B: B.map(function (r) { return Number(r[0]); }), C: C.map(Number), D: D, n: n };
+    const sim = integrateRK4(sys, x0, tMax, N, mode === 'step' ? 1 : null);
+
+    const curves = [];
+    for (let j = 0; j < n; j++) curves.push({ name: 'x' + (j + 1), pts: sim.xs.map(function (x, i) { return { x: i * sim.dt, y: isFinite(x[j]) ? x[j] : NaN }; }) });
+    curves.push({ name: 'y', pts: sim.xs.map(function (x, i) {
+      let y = 0; for (let j = 0; j < n; j++) y += C[j] * x[j];
+      if (mode === 'step') y += D;
+      return { x: i * sim.dt, y: isFinite(y) ? y : NaN };
+    }) });
+
+    let lo = Infinity, hi = -Infinity;
+    curves.forEach(function (c) { c.pts.forEach(function (p) { if (isFinite(p.y)) { lo = Math.min(lo, p.y); hi = Math.max(hi, p.y); } }); });
+    if (!isFinite(lo) || !isFinite(hi)) { lo = -1; hi = 1; }
+    lo = Math.min(lo, 0); hi = Math.max(hi, 0);
+    const yr = niceRange(lo, hi);
+    const xr = [0, tMax];
+    drawAxis(ctx, box, xr, yr, th, 't');
+
+    const cols = palette(curves.length);
+    curves.forEach(function (c, k) { drawCurve(ctx, box, c.pts, xr, yr, cols[k], c.name === 'y' ? 2.2 : 1.5); });
+
+    // 图例（右上角，右对齐）
+    ctx.font = '12px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    const gap = 12;
+    let total = 0;
+    curves.forEach(function (c) { total += 12 + gap + ctx.measureText(c.name).width + gap; });
+    let lx = box.x + box.w - total + gap;
+    const lyc = box.y + 13;
+    curves.forEach(function (c, k) {
+      ctx.fillStyle = cols[k]; ctx.fillRect(lx, lyc - 1, 12, 3);
+      ctx.fillStyle = th.text; ctx.fillText(c.name, lx + 12 + 4, lyc);
+      lx += 12 + 4 + ctx.measureText(c.name).width + gap;
+    });
+
+    const modeText = mode === 'step' ? '单位阶跃 u=1' : (mode === 'impulse' ? '单位冲激（x₀=B）' : '零输入');
+    drawLabel(ctx, box, (s.label || '状态响应') + '　A=' + matText(A) + '　' + modeText, th);
+  }
+
+  // 相平面 / 相轨迹：2 阶自治系统 ẋ=Ax 在相平面 (x₁, x₂) 上的轨迹族
+  function drawPhasePortrait(ctx, W, H, s, th) {
+    const box = panelBox(W, H, { l: 56, r: 20, t: 28, b: 38 });
+    let A = null;
+    if (Array.isArray(s.A) && s.A.length === 2 && Array.isArray(s.A[0]) && s.A[0].length === 2) {
+      A = s.A.map(function (r) { return r.map(Number); });
+    } else {
+      let sys;
+      try { sys = ssFromTF(s.num, s.den); } catch (e) { notice(ctx, box, '系数错误：' + e.message, th); return; }
+      if (sys.n !== 2) { notice(ctx, box, '相平面图需要二阶系统（分母写三个系数，如 [1, 3, 2]）', th); return; }
+      A = sys.A;
+    }
+    const tMax = num(s.tMax, 12);
+    const N = Math.max(20, Math.floor(num(s.samples, 400)));
+    const z0 = Array.isArray(s.x0) ? s.x0.map(Number) : [];
+    const user = [isFinite(z0[0]) ? z0[0] : 1, isFinite(z0[1]) ? z0[1] : 0];
+    const baseR = Math.max(0.5, Math.hypot(user[0], user[1]));
+
+    const sys2 = { A: A, B: [0, 0], C: [1, 0], D: 0, n: 2 };
+    const trajs = [];
+    [0.5, 1].forEach(function (k) {
+      for (let a = 0; a < 12; a++) {
+        const ang = a * Math.PI / 6;
+        trajs.push(integrateRK4(sys2, [k * baseR * Math.cos(ang), k * baseR * Math.sin(ang)], tMax, N, null).xs);
+      }
+    });
+    const userTraj = integrateRK4(sys2, user, tMax, N, null).xs;
+
+    let R = baseR;
+    trajs.concat([userTraj]).forEach(function (tr) {
+      tr.forEach(function (p) { R = Math.max(R, Math.abs(p[0]), Math.abs(p[1])); });
+    });
+    R = Math.min(R, baseR * 12) * 1.1 + 0.3;
+    const xr = [-R, R], yr = [-R, R];
+    drawAxis(ctx, box, xr, yr, th, 'x₁');
+
+    trajs.forEach(function (tr) { drawCurve(ctx, box, tr.map(function (p) { return { x: p[0], y: p[1] }; }), xr, yr, th.grid, 1.1); });
+    drawCurve(ctx, box, userTraj.map(function (p) { return { x: p[0], y: p[1] }; }), xr, yr, th.curve, 2);
+
+    ctx.save();
+    // 起点标记
+    const px = mapX(box, user[0], xr[0], xr[1]), py = mapY(box, user[1], yr[0], yr[1]);
+    ctx.fillStyle = th.pole;
+    ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
+    // 平衡点（原点）
+    const ox = mapX(box, 0, xr[0], xr[1]), oy = mapY(box, 0, yr[0], yr[1]);
+    ctx.strokeStyle = th.zero; ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(ox - 5, oy); ctx.lineTo(ox + 5, oy);
+    ctx.moveTo(ox, oy - 5); ctx.lineTo(ox, oy + 5);
+    ctx.stroke();
+    ctx.restore();
+
+    // 2×2 特征值 → 平衡点类型
+    const tr = A[0][0] + A[1][1];
+    const det = A[0][0] * A[1][1] - A[0][1] * A[1][0];
+    const disc = tr * tr - 4 * det;
+    let type;
+    if (disc >= 0) {
+      const s1 = (tr + Math.sqrt(disc)) / 2, s2 = (tr - Math.sqrt(disc)) / 2;
+      type = (s1 < -1e-9 && s2 < -1e-9) ? '稳定结点（两特征值均负，收敛）'
+        : (s1 > 1e-9 && s2 > 1e-9) ? '不稳定结点（两特征值均正，发散）'
+          : '鞍点（特征值异号，不稳定）';
+    } else {
+      const re = tr / 2;
+      type = re < -1e-9 ? '稳定焦点（共轭特征值实部为负，收敛振荡）'
+        : re > 1e-9 ? '不稳定焦点（共轭特征值实部为正，发散振荡）'
+          : '中心（纯虚特征值，等幅振荡）';
+    }
+    drawLabel(ctx, box, (s.label || '相平面 / 相轨迹') + '　· 标记为给定初值，原点为平衡点', th);
+    ctx.fillStyle = th.muted;
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    ctx.fillText('tr A = ' + fmtTick(tr) + '　det A = ' + fmtTick(det) + '　→ ' + type, W / 2, H - 8);
+  }
+
   // 分派绘制入口；无可用 canvas 时返回 null
   function drawPlot(canvas, spec) {
     const ctx = getCtx(canvas);
@@ -967,6 +1202,9 @@
       else if (s.kind === 'nyquist') drawNyquist(ctx, W, H, s, th);
       else if (s.kind === 'rootlocus') drawRootLocus(ctx, W, H, s, th);
       else if (s.kind === 'polezero') drawPoleZero(ctx, W, H, s, th);
+      else if (s.kind === 'nichols') drawNichols(ctx, W, H, s, th);
+      else if (s.kind === 'state') drawStateResp(ctx, W, H, s, th);
+      else if (s.kind === 'phase') drawPhasePortrait(ctx, W, H, s, th);
       else {
         const box = panelBox(W, H, { l: 16, r: 16, t: 16, b: 16 });
         notice(ctx, box, '未知图型：' + (s.kind || '(空)'), th);
@@ -1005,6 +1243,18 @@
       { kind: 'polezero', num: [1, 2], den: [1, 3, 2], domain: 's', label: 'G(s)=(s+2)/(s²+3s+2)' },
       { kind: 'polezero', num: [10], den: [1, 2, 10], domain: 's', label: 'G(s)=10/(s²+2s+10) 复极点' },
     ],
+    nichols: [
+      { kind: 'nichols', num: [10], den: [1, 2, 10], wMin: 0.01, wMax: 100, samples: 600, label: '尼科尔斯图 G(s)=10/(s²+2s+10)' },
+      { kind: 'nichols', num: [1], den: [1, 3, 2, 0], wMin: 0.01, wMax: 100, samples: 600, label: '尼科尔斯图 G(s)=1/(s(s+1)(s+2))' },
+    ],
+    state: [
+      { kind: 'state', A: [[0, 1], [-2, -3]], B: [[0], [1]], C: [[1, 0]], D: [[0]], u: 'step', tMax: 8, samples: 800, label: '状态响应 ẋ=Ax+Bu' },
+      { kind: 'state', A: [[0, 1], [-2, -3]], B: [[0], [1]], C: [[1, 0]], D: [[0]], u: 'impulse', tMax: 8, samples: 800, label: '状态冲激响应（x₀=B）' },
+    ],
+    phase: [
+      { kind: 'phase', num: [1], den: [1, 3, 2], x0: [1, 0], tMax: 12, samples: 400, label: '稳定结点（过阻尼）' },
+      { kind: 'phase', num: [1], den: [1, 0, 4], x0: [1, 0], tMax: 12, samples: 400, label: '中心（无阻尼，等幅振荡）' },
+    ],
   };
 
   return {
@@ -1014,8 +1264,6 @@
     polyMul: polyMul,
     polyAdd: polyAdd,
     polyRoots: polyRoots,
-    dft: dft,
-    dtft: dtft,
     drawPlot: drawPlot,
     PREVIEW: PREVIEW,
   };

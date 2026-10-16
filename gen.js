@@ -29,18 +29,20 @@
      一、规则层：标签 → 生成项
      R(plots, tables) → { plots, tables, need }
        plots  图型id  step 时域响应 / bode 幅频相频 / nyquist 奈奎斯特 /
-                     rootlocus 根轨迹 / polezero 零极点 / conv 卷积图解
+                     nichols 尼科尔斯 / rootlocus 根轨迹 / polezero 零极点 /
+                     state 状态响应 / phase 相平面
        tables 表型id  poles 极点稳定性 / perf 二阶性能 / routh 劳斯表 /
                      steady 型别稳态误差 / margins 稳定裕度 / freqs 频率响应关键点 /
                      coeffs 系数特征根 / ssmat 状态空间矩阵 / sschar 特征值稳定性 /
                      ctrbo 能控能观判定
-       need   需要的参数（仅以下六个键，且只由 params 判定是否就绪）：
+       need   需要的参数（仅以下五个键，且只由 params 判定是否就绪）：
               tf 传递函数 / tfopen 开环传递函数 / eq 微分方程 /
-              ss 状态空间矩阵 / k 增益 / pair 两路信号
+              ss 状态空间矩阵 / k 增益
      ========================================================= */
   const PLOT_LABEL = {
     step: '时域响应', bode: '幅频/相频 Bode 图', nyquist: '奈奎斯特图',
-    rootlocus: '根轨迹', polezero: '零极点图', conv: '卷积图解',
+    nichols: '尼科尔斯图', rootlocus: '根轨迹', polezero: '零极点图',
+    state: '状态响应', phase: '相平面 / 相轨迹',
   };
   const TABLE_LABEL = {
     poles: '极点与稳定性', perf: '二阶系统性能指标', routh: '劳斯表',
@@ -50,7 +52,7 @@
   };
   const PLOT_NEED = {
     step: ['tf'], bode: ['tf'], nyquist: ['tfopen'], rootlocus: ['tfopen'],
-    polezero: ['tf'], conv: ['pair'],
+    polezero: ['tf'], nichols: ['tfopen'], state: ['ss'], phase: ['tf'],
   };
   const TABLE_NEED = {
     poles: ['tf'], perf: ['tf'], routh: ['tf'], steady: ['tfopen'], margins: ['tfopen'],
@@ -73,6 +75,8 @@
       'BIBO 稳定': R(['polezero'], ['poles']),
       'Bode 图': R(['bode'], ['freqs', 'margins']),
       '奈奎斯特': R(['nyquist'], ['margins']),
+      '尼科尔斯': R(['nichols'], ['margins']),
+      '尼科尔斯图': R(['nichols'], ['margins']),
       '幅值裕度': R(['bode'], ['margins']),
       '相角裕度': R(['bode'], ['margins']),
       '截止频率': R(['bode'], ['margins']),
@@ -81,6 +85,8 @@
       '滞后校正': R(['bode'], ['margins']),
       'PID': R(['bode'], ['margins']),
       '根轨迹校正': R(['rootlocus'], ['poles']),
+      '相平面': R(['phase'], ['poles']),
+      '相轨迹': R(['phase'], ['poles']),
       '型别': R([], ['steady']),
       '开环增益': R([], ['steady']),
     },
@@ -105,6 +111,10 @@
       '输出反馈': R([], ['sschar']),
       '观测器': R([], ['sschar']),
       '渐近稳定': R(['polezero'], ['sschar', 'poles']),
+      '状态响应': R(['state'], ['ssmat', 'sschar']),
+      '状态变量图': R(['state'], ['ssmat', 'sschar']),
+      '相平面': R(['phase'], ['sschar']),
+      '相轨迹': R(['phase'], ['sschar']),
       '离散化': R([], ['ssmat']),
       '零阶保持': R([], ['ssmat']),
       '采样周期': R([], ['ssmat']),
@@ -1136,7 +1146,6 @@
       case 'eq': return !!params.eq;
       case 'ss': return !!params.ss;
       case 'k': return params.gainK != null;
-      case 'pair': return false;
       default: return true;
     }
   }
@@ -1146,19 +1155,41 @@
     eq: '微分方程（如 $y\'\'+3y\'+2y=u$）',
     ss: '状态空间矩阵 $A,B,C,D$',
     k: '增益 $K$（如 $K=5$）',
-    pair: '两路信号 $x(t)$、$h(t)$',
   };
 
+  // 矩阵 → 输入框文本：「0, 1; -2, -3」（行用 ; 分隔）
+  function matToStr(M) {
+    if (!Array.isArray(M)) return String(M);
+    if (!Array.isArray(M[0])) return M.join(', ');
+    return M.map(r => r.join(', ')).join('; ');
+  }
+
   function plotFields(kind, params) {
-    const tf = (kind === 'nyquist' || kind === 'rootlocus') ? openLoopOf(params) : mainTF(params);
+    if (kind === 'state') {
+      const ss = params.ss;
+      if (!ss || !ss.A) return null;
+      const n = ss.n || ss.A.length;
+      const Bcol = ss.B ? matToStr(ss.B) : Array.from({ length: n }, (_, i) => (i === n - 1 ? 1 : 0)).join('; ');
+      const Crow = ss.C ? matToStr(ss.C) : Array.from({ length: n }, (_, i) => (i === 0 ? 1 : 0)).join(', ');
+      return { A: matToStr(ss.A), B: Bcol, C: Crow, D: ss.D ? matToStr(ss.D) : '0',
+        u: 'step', x0: '1, 0', tMax: '8', samples: '800', label: '状态响应（n=' + n + '）' };
+    }
+    const tf = (kind === 'nyquist' || kind === 'rootlocus' || kind === 'nichols') ? openLoopOf(params) : mainTF(params);
     if (!tf) return null;
     const num = arrStr(tf.num), den = arrStr(tf.den);
     const label = (tf.name || 'G') + '(' + (tf.domain || 's') + ')';
     if (kind === 'step') return { resp: 'step', num: num, den: den, tMax: '8', samples: '800', label: '单位阶跃响应 ' + label };
     if (kind === 'bode') return { num: num, den: den, domain: tf.domain === 'z' ? 'z' : 's', wMin: '0.01', wMax: '100', samples: '400', label: label };
     if (kind === 'nyquist') return { num: num, den: den, wMin: '0.01', wMax: '100', samples: '600', label: label };
+    if (kind === 'nichols') return { num: num, den: den, wMin: '0.01', wMax: '100', samples: '600', label: label };
     if (kind === 'rootlocus') return { num: num, den: den, kMax: '50', samples: '220', label: label };
     if (kind === 'polezero') return { num: num, den: den, domain: tf.domain === 'z' ? 'z' : 's', label: label };
+    if (kind === 'phase') {
+      if (params.ss && Array.isArray(params.ss.A) && params.ss.A.length === 2) {
+        return { A: matToStr(params.ss.A), num: '', den: '', x0: '1, 0', tMax: '12', samples: '400', label: '相平面 / 相轨迹' };
+      }
+      return { A: '', num: num, den: den, x0: '1, 0', tMax: '12', samples: '400', label: '相平面 / 相轨迹' };
+    }
     return null;
   }
 

@@ -520,7 +520,6 @@ html[data-imgsize="big"] .imgs img.thumb{
   width:100%; height:auto; max-width:100%; margin:8px 0; display:block;
   border:1px solid var(--line); border-radius:12px; background:var(--card-2); touch-action:pan-y;
 }
-#convShift{flex:1; min-width:120px;}
 #plotNote{border:none; background:none; padding:0;}
 
 /* ---------- 预设标签（学科词表） ---------- */

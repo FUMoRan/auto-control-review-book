@@ -3,7 +3,7 @@
    科目：ac = 自动控制原理（经典控制）/ lc = 现代控制，顶部切换，数据按 subject 字段分区。
    两个视图：q = 错题 / k = 知识点，数据分开存，共用一套标签。
    在基座（数学复习本）之上新增：
-     · 学科绘图（plot.js / conv.js）与代码高亮（code.js）
+     · 学科绘图（plot.js）与代码高亮（code.js）
      · 公式速查表（transforms.js）
      · 配图编号、顺序调整、卡片大图模式、多图灯箱（翻页/缩放/旋转/拖动）
      · 拖拽与剪贴板粘贴图片、公式快捷插入条、学科预设标签
@@ -33,7 +33,6 @@ const {
 
 /* 学科模块（经典脚本已先行加载，挂到 window 上） */
 const MQP = window.MQP || {};   // 绘图
-const MQV = window.MQV || {};   // 卷积图解
 const MQC = window.MQC || {};   // 代码高亮
 const MQT = window.MQT || {};   // 速查表
 const MQG = window.MQG || {};   // 一键生成（标签驱动，纯本地）
@@ -905,13 +904,14 @@ const PRESET_TAGS = {
   ac: {
     '时域分析': ['一阶系统', '二阶系统', '超调量', '调节时间', '稳态误差', '响应对应'],
     '稳定性': ['劳斯判据', '赫尔维茨判据', '根轨迹', '渐近稳定', 'BIBO 稳定'],
-    '频域': ['Bode 图', '奈奎斯特', '幅值裕度', '相角裕度', '截止频率', '谐振峰值'],
+    '频域': ['Bode 图', '奈奎斯特', '尼科尔斯图', '幅值裕度', '相角裕度', '截止频率', '谐振峰值'],
+    '相平面分析': ['相平面', '相轨迹'],
     '校正与实现': ['超前校正', '滞后校正', 'PID', '根轨迹校正', '型别', '开环增益'],
   },
   lc: {
-    '状态空间': ['状态方程', '输出方程', '可控标准型', '可观标准型', '状态转移矩阵', '矩阵指数', '相似变换'],
+    '状态空间': ['状态方程', '输出方程', '可控标准型', '可观标准型', '状态转移矩阵', '矩阵指数', '相似变换', '状态响应', '状态变量图'],
     '能控能观': ['能控性秩判据', 'PBH 判据', '能观性秩判据', '能控分解', '能观分解'],
-    '稳定性与配置': ['李雅普诺夫', '渐近稳定', '极点配置', '状态反馈', '输出反馈', '观测器'],
+    '稳定性与配置': ['李雅普诺夫', '渐近稳定', '极点配置', '状态反馈', '输出反馈', '观测器', '相平面', '相轨迹'],
     '离散与实现': ['离散化', '零阶保持', '采样周期', '多变量系统', '数字控制器'],
   },
 };
@@ -2285,29 +2285,22 @@ refTabsEl.querySelectorAll('button').forEach(b => {
   };
 });
 
-/* ===================== 绘图（时域响应 / Bode 图 / 奈奎斯特 / 根轨迹 / 零极点图 / 卷积图解） ===================== */
+/* ===================== 绘图（时域响应 / Bode / 奈奎斯特 / 尼科尔斯 / 根轨迹 / 零极点 / 状态响应 / 相平面） ===================== */
 const plotDrawer = document.getElementById('plotDrawer');
 const plotKindEl = document.getElementById('plotKind');
 const plotFieldsEl = document.getElementById('plotFields');
 const plotCanvas = document.getElementById('plotCanvas');
 const plotNoteEl = document.getElementById('plotNote');
-const plotConvCtl = document.getElementById('plotConvCtl');
-const convShiftEl = document.getElementById('convShift');
-const convShiftVal = document.getElementById('convShiftVal');
 
 let plotKind = 'step';
 let plotTarget = null;      // null | 'add' | 'edit'：绘图后「存为配图」的目标
-let convCtl = null;
-let convPlaying = false;
-let convRafId = 0;
-let convMode = 'continuous';
 const plotSampleIdx = {};
 const plotCache = {};       // 记录各图型上次填写的参数，重新打开时不至于回到默认值
 
 const PLOT_FIELDS = {
   step: [
     { id: 'resp', label: '响应类型', val: 'step', type: 'select',
-      opts: [['step', '单位阶跃响应 y(t)'], ['impulse', '单位冲激响应 h(t)']] },
+      opts: [['step', '单位阶跃响应 y(t)'], ['impulse', '单位冲激响应 h(t)'], ['ramp', '单位斜坡响应']] },
     { id: 'num', label: '分子系数（高次→常数）', val: '[10]', wide: true },
     { id: 'den', label: '分母系数', val: '[1, 2, 10]', wide: true },
     { id: 'tMax', label: 't 上限', val: '6' },
@@ -2346,21 +2339,36 @@ const PLOT_FIELDS = {
       opts: [['s', 's 域（左半平面 → 稳定）'], ['z', 'z 域（单位圆内 → 稳定）']] },
     { id: 'label', label: '图注（可选）', val: '', wide: true },
   ],
-  conv: [
-    { id: 'mode', label: '类型', val: 'continuous', type: 'select',
-      opts: [['continuous', '连续卷积 y(t)=x*h'], ['discrete', '离散卷积和 y[n]=x*h']] },
-    { id: 'exprA', label: '信号 A', val: 'u(t)-u(t-1)', wide: true },
-    { id: 'exprB', label: '信号 B', val: 'rect(t)', wide: true },
-    { id: 'varMin', label: '变量下限', val: '-1' },
-    { id: 'varMax', label: '变量上限', val: '3' },
-    { id: 'samples', label: '采样点数（连续）', val: '400' },
+  nichols: [
+    { id: 'num', label: '开环分子系数（高次→常数）', val: '[10]', wide: true },
+    { id: 'den', label: '开环分母系数', val: '[1, 2, 10]', wide: true },
+    { id: 'wMin', label: 'ω 下限', val: '0.01' },
+    { id: 'wMax', label: 'ω 上限', val: '100' },
+    { id: 'samples', label: '采样点数', val: '600' },
+    { id: 'label', label: '图注（可选）', val: '', wide: true },
+  ],
+  state: [
+    { id: 'A', label: '状态矩阵 A（行用 ; 分隔）', val: '0, 1; -2, -3', wide: true },
+    { id: 'B', label: '输入矩阵 B（n×1 列）', val: '0; 1', wide: true },
+    { id: 'C', label: '输出矩阵 C（1×n 行）', val: '1, 0', wide: true },
+    { id: 'D', label: '直传 D', val: '0' },
+    { id: 'u', label: '激励', val: 'step', type: 'select',
+      opts: [['step', '单位阶跃 u=1'], ['impulse', '单位冲激（x₀=B）'], ['zero', '零输入（给定 x₀）']] },
+    { id: 'x0', label: '零输入初值 x₀（仅零输入时用）', val: '1, 0', wide: true },
+    { id: 'tMax', label: 't 上限', val: '8' },
+    { id: 'samples', label: '采样点数', val: '800' },
+    { id: 'label', label: '图注（可选）', val: '', wide: true },
+  ],
+  phase: [
+    { id: 'A', label: '状态矩阵 A（可选，2×2；留空则用下方传递函数）', val: '', wide: true },
+    { id: 'num', label: '分子系数', val: '[1]', wide: true },
+    { id: 'den', label: '分母系数（二阶）', val: '[1, 3, 2]', wide: true },
+    { id: 'x0', label: '初始状态 x₁(0), x₂(0)', val: '1, 0', wide: true },
+    { id: 'tMax', label: 't 上限', val: '12' },
+    { id: 'samples', label: '采样点数', val: '400' },
+    { id: 'label', label: '图注（可选）', val: '', wide: true },
   ],
 };
-
-const CONV_SAMPLES = [
-  { mode: 'continuous', exprA: 'u(t)-u(t-1)', exprB: 't', varMin: 0, varMax: 2.5, samples: 400 },
-  { mode: 'discrete', exprA: 'u(n)-u(n-3)', exprB: '0.8^n*u(n)', varMin: -1, varMax: 8, samples: 40 },
-];
 
 const getFieldVal = id => {
   const el = document.getElementById('pf_' + id);
@@ -2369,6 +2377,13 @@ const getFieldVal = id => {
 function parseCoeffs(s) {
   const body = String(s || '').trim().replace(/^[\[\(]/, '').replace(/[\]\)]$/, '');
   return body.split(/[,，\s]+/).map(x => x.trim()).filter(Boolean).map(Number).filter(n => !isNaN(n));
+}
+// 「0, 1; -2, -3」风格的矩阵文本 → 二维数组；空串返回 null
+function parseMatrix(s) {
+  const rows = String(s || '').split(/[;；]/).map(r => r.trim()).filter(Boolean);
+  if (!rows.length) return null;
+  return rows.map(r => r.replace(/^[\[\(]/, '').replace(/[\]\)]$/, '')
+    .split(/[,，\s]+/).map(x => x.trim()).filter(Boolean).map(Number).filter(n => !isNaN(n)));
 }
 function buildPlotFields() {
   const defs = PLOT_FIELDS[plotKind] || [];
@@ -2390,7 +2405,6 @@ function buildPlotFields() {
     if (f.type === 'select') el.value = plotCache[plotKind + ':' + f.id] != null ? plotCache[plotKind + ':' + f.id] : f.val;
     el.addEventListener(f.type === 'select' ? 'change' : 'input', debounce(renderPlot, 250));
   });
-  plotConvCtl.style.display = plotKind === 'conv' ? 'flex' : 'none';
 }
 function snapshotPlotFields() {
   (PLOT_FIELDS[plotKind] || []).forEach(f => {
@@ -2401,68 +2415,23 @@ function snapshotPlotFields() {
 function readPlotSpec() {
   const dark = effectiveTheme() === 'dark';
   const n = id => Number(getFieldVal(id));
-  if (plotKind === 'step') return { kind: 'step', resp: getFieldVal('resp') === 'impulse' ? 'impulse' : 'step', num: parseCoeffs(getFieldVal('num')), den: parseCoeffs(getFieldVal('den')), tMax: n('tMax'), samples: n('samples'), label: getFieldVal('label'), dark };
+  if (plotKind === 'step') { const resp = getFieldVal('resp'); return { kind: 'step', resp: (resp === 'impulse' || resp === 'ramp') ? resp : 'step', num: parseCoeffs(getFieldVal('num')), den: parseCoeffs(getFieldVal('den')), tMax: n('tMax'), samples: n('samples'), label: getFieldVal('label'), dark }; }
   if (plotKind === 'bode') return { kind: 'bode', num: parseCoeffs(getFieldVal('num')), den: parseCoeffs(getFieldVal('den')), domain: getFieldVal('domain'), wMin: n('wMin'), wMax: n('wMax'), samples: n('samples'), label: getFieldVal('label'), dark };
   if (plotKind === 'nyquist') return { kind: 'nyquist', num: parseCoeffs(getFieldVal('num')), den: parseCoeffs(getFieldVal('den')), wMin: n('wMin'), wMax: n('wMax'), samples: n('samples'), label: getFieldVal('label'), dark };
   if (plotKind === 'rootlocus') return { kind: 'rootlocus', num: parseCoeffs(getFieldVal('num')), den: parseCoeffs(getFieldVal('den')), kMax: n('kMax'), samples: n('samples'), label: getFieldVal('label'), dark };
   if (plotKind === 'polezero') return { kind: 'polezero', num: parseCoeffs(getFieldVal('num')), den: parseCoeffs(getFieldVal('den')), domain: getFieldVal('domain'), label: getFieldVal('label'), dark };
-  if (plotKind === 'conv') return { kind: 'conv', mode: getFieldVal('mode') === 'discrete' ? 'discrete' : 'continuous', exprA: getFieldVal('exprA'), exprB: getFieldVal('exprB'), varMin: n('varMin'), varMax: n('varMax'), samples: n('samples'), dark };
+  if (plotKind === 'nichols') return { kind: 'nichols', num: parseCoeffs(getFieldVal('num')), den: parseCoeffs(getFieldVal('den')), wMin: n('wMin'), wMax: n('wMax'), samples: n('samples'), label: getFieldVal('label'), dark };
+  if (plotKind === 'state') { const u = getFieldVal('u'); return { kind: 'state', A: parseMatrix(getFieldVal('A')), B: parseMatrix(getFieldVal('B')), C: parseMatrix(getFieldVal('C')), D: parseMatrix(getFieldVal('D')), u: (u === 'impulse' || u === 'zero') ? u : 'step', x0: parseCoeffs(getFieldVal('x0')), tMax: n('tMax'), samples: n('samples'), label: getFieldVal('label'), dark }; }
+  if (plotKind === 'phase') return { kind: 'phase', A: parseMatrix(getFieldVal('A')), num: parseCoeffs(getFieldVal('num')), den: parseCoeffs(getFieldVal('den')), x0: parseCoeffs(getFieldVal('x0')), tMax: n('tMax'), samples: n('samples'), label: getFieldVal('label'), dark };
   return { kind: plotKind, dark };
 }
 
-function clearCanvas() {
-  try {
-    const ctx = plotCanvas.getContext('2d');
-    if (ctx) ctx.clearRect(0, 0, plotCanvas.width, plotCanvas.height);
-  } catch (e) {}
-}
-function convShiftLabel(v) {
-  return (convMode === 'discrete' ? 'n = ' : 'τ = ') + (Math.round(v * 1000) / 1000);
-}
-function destroyConv() {
-  stopConvSync();
-  if (convCtl) { try { convCtl.destroy(); } catch (e) {} convCtl = null; }
-}
 function renderPlot() {
   const spec = readPlotSpec();
   snapshotPlotFields();
-  if (plotKind === 'conv') { renderConv(spec); return; }
-  destroyConv();
   if (!MQP.drawPlot) { plotNoteEl.textContent = '绘图模块（plot.js）未加载'; return; }
   const r = MQP.drawPlot(plotCanvas, spec);
   plotNoteEl.textContent = r === null ? '无法绘制（缺少 canvas 上下文）' : '';
-}
-function renderConv(spec) {
-  destroyConv();
-  if (!MQV.createConvController || !MQV.parseConvSpec) { plotNoteEl.textContent = '卷积模块（conv.js）未加载'; return; }
-  const parsed = MQV.parseConvSpec(spec);
-  convMode = parsed.mode || 'continuous';
-  if (parsed.error) { plotNoteEl.textContent = parsed.error; clearCanvas(); return; }
-  plotNoteEl.textContent = '';
-  convCtl = MQV.createConvController(plotCanvas, parsed);
-  convShiftEl.min = String(parsed.varMin);
-  convShiftEl.max = String(parsed.varMax);
-  convShiftEl.step = String(convMode === 'discrete' ? 1 : ((parsed.varMax - parsed.varMin) / 200 || 0.01));
-  convShiftEl.value = String(parsed.varMin);
-  convShiftVal.textContent = convShiftLabel(parsed.varMin);
-}
-function setConvPlayLabel() {
-  document.getElementById('convPlay').textContent = convPlaying ? '⏸ 暂停' : '▶ 播放';
-}
-function startConvSync() {
-  const step = () => {
-    if (!convPlaying || !convCtl) return;
-    const v = convCtl.getShift();
-    convShiftEl.value = String(v);
-    convShiftVal.textContent = convShiftLabel(v);
-    convRafId = requestAnimationFrame(step);
-  };
-  convRafId = requestAnimationFrame(step);
-}
-function stopConvSync() {
-  convPlaying = false;
-  if (convRafId) { cancelAnimationFrame(convRafId); convRafId = 0; }
-  setConvPlayLabel();
 }
 function openPlotDrawer(target) {
   plotTarget = target || null;
@@ -2471,12 +2440,10 @@ function openPlotDrawer(target) {
   renderPlot();
 }
 function closePlotDrawer() {
-  destroyConv();
   plotDrawer.classList.remove('open');
   plotTarget = null;
 }
 function plotSamples() {
-  if (plotKind === 'conv') return CONV_SAMPLES;
   return (MQP.PREVIEW && MQP.PREVIEW[plotKind]) || [];
 }
 function applyPlotValues(o) {
@@ -2522,7 +2489,6 @@ plotKindEl.querySelectorAll('button').forEach(b => {
   b.onclick = () => {
     plotKind = b.dataset.kind;
     plotKindEl.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
-    destroyConv();
     buildPlotFields();
     renderPlot();
   };
@@ -2543,20 +2509,6 @@ document.getElementById('plotBtn').onclick = () => openPlotDrawer(null);
 document.getElementById('addPlotBtn').onclick = () => openPlotDrawer('add');
 document.getElementById('editPlotBtn').onclick = () => openPlotDrawer('edit');
 plotDrawer.onclick = e => { if (e.target === plotDrawer) closePlotDrawer(); };
-convShiftEl.oninput = () => {
-  if (!convCtl) return;
-  let v = Number(convShiftEl.value);
-  if (convMode === 'discrete') v = Math.round(v);
-  convCtl.setShift(v);
-  convShiftVal.textContent = convShiftLabel(v);
-};
-document.getElementById('convPlay').onclick = () => {
-  if (!convCtl) return;
-  if (convPlaying) { convCtl.pause(); stopConvSync(); return; }
-  convCtl.play();
-  if (convCtl.isPlaying()) { convPlaying = true; setConvPlayLabel(); startConvSync(); }
-  else { plotNoteEl.textContent = '当前环境不支持动画播放'; }
-};
 
 /* ===================== 一键生成（标签驱动 · 纯本地，不使用任何 API） =====================
    入口 MQG.plan(subject, item)：先按题目标签匹配「该生成哪些图 / 表」，
@@ -2569,7 +2521,7 @@ const genListEl = document.getElementById('genList');
 
 const GEN_NEED_NAME = {
   tf: '传递函数', tfopen: '开环传递函数', eq: '微分方程',
-  ss: '状态空间矩阵', k: '增益 K', pair: '两路信号',
+  ss: '状态空间矩阵', k: '增益 K',
 };
 
 // 该条目是否有任一标签能驱动生成（决定卡片是否显示「⚡ 生成」）
@@ -2617,7 +2569,7 @@ function genTableHTML(data) {
 
 function buildGenList(plan) {
   if (!plan.items.length) {
-    genListEl.innerHTML = '<p class="gen-empty">这条内容的标签暂不驱动任何图表。可给它加上带 ⚡ 的预设标签（如「二阶系统」「根轨迹」「Bode 图」「奈奎斯特」「状态方程」「能控性秩判据」）后再点「⚡ 生成」。</p>';
+    genListEl.innerHTML = '<p class="gen-empty">这条内容的标签暂不驱动任何图表。可给它加上带 ⚡ 的预设标签（如「二阶系统」「根轨迹」「Bode 图」「奈奎斯特」「尼科尔斯」「相平面」「状态方程」「状态响应」「能控性秩判据」）后再点「⚡ 生成」。</p>';
     return;
   }
   genListEl.innerHTML = plan.items.map((it, i) => {

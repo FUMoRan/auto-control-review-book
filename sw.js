@@ -1,13 +1,12 @@
 // 自控 · 现控 复习本 · 离线缓存：首次访问后把页面和公式引擎缓存到本地，之后断网也能打开。
 // 采用「网络优先」：联网时总是拿最新代码，避免发新版后仍加载到旧缓存；断网时回退缓存。
-const CACHE = 'ac-lc-review-v2';
+const CACHE = 'ac-lc-review-v3';
 const CORE = [
   './',
   './index.html',
   './styles.css',
   './lib.js',
   './plot.js',
-  './conv.js',
   './code.js',
   './transforms.js',
   './gen.js',

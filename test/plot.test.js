@@ -10,7 +10,6 @@ const MQP = require('../plot.js');
 const {
   compileExpr, tryCompileExpr,
   polyRoots, evalPoly, polyMul, polyAdd,
-  dft,
 } = MQP;
 
 const ZH = /[\u4e00-\u9fa5]/;
@@ -68,16 +67,11 @@ test('关键函数取值与手算一致', () => {
   const e0 = compileExpr('exp(t)');
   assert.equal(e0({ t: 0 }), 1, 'exp(0)=1');
 
-  const u = compileExpr('u(t)');
-  assert.equal(u({ t: -1 }), 0, 'u(-1)=0');
-  assert.equal(u({ t: 1 }), 1, 'u(1)=1');
+  const c0 = compileExpr('cos(w*t)');
+  assert.equal(c0({ w: 0, t: 3 }), 1, 'cos(0)=1');
 
-  const rect = compileExpr('rect(t)');
-  assert.equal(rect({ t: 0 }), 1, 'rect(0)=1');
-
-  const sinc = compileExpr('sinc(t)');
-  assert.equal(sinc({ t: 0 }), 1, 'sinc(0)=1');
-  assert.ok(Math.abs(sinc({ t: 1 })) < 1e-9, 'sinc(1)≈0');
+  const ramp = compileExpr('t');
+  assert.equal(ramp({ t: 2.5 }), 2.5, '斜坡 t');
 });
 
 test('常量、幂、一元负号优先级与变量别名', () => {
@@ -137,41 +131,19 @@ test('polyRoots: 三阶 z³-6z²+11z-6 的根为 1,2,3', () => {
   });
 });
 
-/* ===================== DFT ===================== */
-test('DFT: 长度 8 的常数序列只在 k=0 有能量', () => {
-  const seq = new Array(8).fill(1);
-  const D = dft(seq, 7);
-  assert.equal(D.length, 8);
-  assert.ok(Math.abs(D[0].mag - 8) < 1e-9, '|X[0]| 应为 8');
-  for (let k = 1; k <= 7; k++) {
-    assert.ok(D[k].mag < 1e-9, 'k=' + k + ' 应为 0，实际 ' + D[k].mag);
-  }
-});
-
-test('DFT: cos 序列峰值落在正确频点索引', () => {
-  const N = 16, m = 3;
-  const seq = [];
-  for (let n = 0; n < N; n++) seq.push(Math.cos(2 * Math.PI * m * n / N));
-  const D = dft(seq, N - 1);
-  assert.ok(Math.abs(D[m].mag - N / 2) < 1e-9, '|X[3]| 应约为 N/2=8');
-  // 峰值索引应为 3（或对称的 13，模相等）
-  let argmax = 0;
-  for (let k = 0; k < N; k++) if (D[k].mag > D[argmax].mag) argmax = k;
-  assert.ok(argmax === m || argmax === N - m, '峰值索引应为 3 或 13，实际 ' + argmax);
-});
-
 /* ===================== 预览示例基本自洽 ===================== */
-test('PREVIEW 每种 kind 至少两个示例，参数完整且可编译', () => {
-  const kinds = ['step', 'bode', 'nyquist', 'rootlocus', 'polezero'];
+test('PREVIEW 每种 kind 至少两个示例，参数完整', () => {
+  const kinds = ['step', 'bode', 'nyquist', 'nichols', 'rootlocus', 'polezero', 'state', 'phase'];
   kinds.forEach(function (kind) {
     const list = MQP.PREVIEW[kind];
     assert.ok(Array.isArray(list) && list.length >= 2, kind + ' 示例不足');
     list.forEach(function (spec) {
       assert.equal(spec.kind, kind);
-      if (spec.expr) {
-        assert.equal(typeof compileExpr(spec.expr), 'function', kind + ' 表达式应可编译：' + spec.expr);
+      if (kind === 'state') {
+        assert.ok(Array.isArray(spec.A) && Array.isArray(spec.A[0]), kind + ' 应提供 A 矩阵');
+      } else {
+        assert.ok(Array.isArray(spec.num) && Array.isArray(spec.den), kind + ' 应提供分子/分母系数');
       }
-      assert.ok(Array.isArray(spec.num) && Array.isArray(spec.den), kind + ' 应提供分子/分母系数');
     });
   });
 });

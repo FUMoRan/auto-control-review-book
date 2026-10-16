@@ -22,6 +22,9 @@ test('规则层：ac 标签匹配到正确的图/表，未知标签与科目返�
   assert.ok(Array.isArray(r.need), 'rule 必须含 need 数组');
   assert.deepEqual(MQG.tagRule('ac', '劳斯判据').tables, ['routh']);
   assert.deepEqual(MQG.tagRule('ac', 'Bode 图').plots, ['bode']);
+  assert.deepEqual(MQG.tagRule('ac', '尼科尔斯').plots, ['nichols']);
+  assert.deepEqual(MQG.tagRule('ac', '相平面').plots, ['phase']);
+  assert.deepEqual(MQG.tagRule('ac', '相轨迹').plots, ['phase']);
   assert.equal(MQG.tagRule('ac', '这个标签不存在'), null);
   assert.equal(MQG.tagRule('不存在的科目', '二阶系统'), null);
 });
@@ -31,6 +34,9 @@ test('规则层：lc 标签（状态方程/能控性秩判据/多变量系统/�
   assert.deepEqual(MQG.tagRule('lc', '能控性秩判据').tables, ['ctrbo']);
   assert.deepEqual(MQG.tagRule('lc', '多变量系统').tables, ['ssmat', 'sschar', 'ctrbo']);
   assert.deepEqual(MQG.tagRule('lc', '渐近稳定').plots, ['polezero']);
+  assert.deepEqual(MQG.tagRule('lc', '状态响应').plots, ['state']);
+  assert.deepEqual(MQG.tagRule('lc', '状态变量图').plots, ['state']);
+  assert.deepEqual(MQG.tagRule('lc', '相轨迹').plots, ['phase']);
   assert.deepEqual(MQG.tagRule('lc', '离散化').tables, ['ssmat']);
 });
 
@@ -44,9 +50,9 @@ test('规则层：标签匹配忽略所有空白（Bode 图 == Bode图，PBH 判
 
 test('规则层：可驱动标签列表只含能生成图/表的标签', () => {
   const ac = MQG.drivableTags('ac');
-  ['二阶系统', '根轨迹', 'Bode 图', '奈奎斯特', '型别'].forEach(t => assert.ok(ac.includes(t), t));
+  ['二阶系统', '根轨迹', 'Bode 图', '奈奎斯特', '尼科尔斯', '相平面', '型别'].forEach(t => assert.ok(ac.includes(t), t));
   const lc = MQG.drivableTags('lc');
-  ['状态方程', '能控性秩判据', '多变量系统', '离散化', '观测器'].forEach(t => assert.ok(lc.includes(t), t));
+  ['状态方程', '能控性秩判据', '多变量系统', '状态响应', '相轨迹', '离散化', '观测器'].forEach(t => assert.ok(lc.includes(t), t));
   assert.deepEqual(MQG.drivableTags('缺科目'), []);
 });
 
@@ -388,4 +394,59 @@ test('plan：未标标签时 hits 为空、items 为空，但仍返回抽取到�
   assert.deepEqual(p.hits, []);
   assert.deepEqual(p.items, []);
   assert.deepEqual(p.params.tf.den, [1, 1]);
+});
+
+/* ===================== 入口：新增控制图型（尼科尔斯 / 状态响应 / 相平面） ===================== */
+test('plan：ac 尼科尔斯（开环传递函数）→ nichols 图就绪 + 裕度表就绪', () => {
+  const p = MQG.plan('ac', {
+    tags: ['尼科尔斯'],
+    stem: '系统开环传递函数 $G(s)=\\frac{1}{s(s+1)(s+2)}$',
+  });
+  const n = p.items.find(x => x.type === 'plot' && x.kind === 'nichols');
+  assert.ok(n && n.ready, 'nichols 应就绪');
+  assert.equal(n.fields.num, '[1]');
+  assert.equal(n.fields.den, '[1, 3, 2, 0]');
+  const mg = p.items.find(x => x.type === 'table' && x.kind === 'margins');
+  assert.ok(mg && mg.ready, '裕度表应就绪');
+});
+
+test('plan：lc 状态响应（A/B/C/D）→ state 图就绪，矩阵转成输入框文本', () => {
+  const p = MQG.plan('lc', {
+    tags: ['状态响应'],
+    stem: '$A=\\begin{pmatrix}0&1\\\\-2&-3\\end{pmatrix},\\ B=\\begin{pmatrix}0\\\\1\\end{pmatrix},\\ C=\\begin{pmatrix}1&0\\end{pmatrix},\\ D=0$',
+  });
+  const st = p.items.find(x => x.type === 'plot' && x.kind === 'state');
+  assert.ok(st && st.ready, 'state 应就绪');
+  assert.equal(st.fields.A, '0, 1; -2, -3');
+  assert.equal(st.fields.B, '0; 1');
+  assert.equal(st.fields.C, '1, 0');
+  assert.equal(st.fields.u, 'step');
+  const ssmat = p.items.find(x => x.type === 'table' && x.kind === 'ssmat');
+  assert.ok(ssmat && ssmat.ready);
+});
+
+test('plan：相平面 / 相轨迹——经典控制用二阶传递函数，现代控制用 A 矩阵', () => {
+  const ac = MQG.plan('ac', { tags: ['相平面'], stem: '$G(s)=\\frac{1}{s^{2}+3s+2}$' });
+  const pa = ac.items.find(x => x.kind === 'phase');
+  assert.ok(pa && pa.ready, 'ac 相平面应就绪');
+  assert.equal(pa.fields.A, '');
+  assert.equal(pa.fields.den, '[1, 3, 2]');
+
+  const lc = MQG.plan('lc', {
+    tags: ['相轨迹'],
+    stem: '$A=\\begin{pmatrix}0&1\\\\-2&-3\\end{pmatrix},\\ B=\\begin{pmatrix}0\\\\1\\end{pmatrix},\\ C=\\begin{pmatrix}1&0\\end{pmatrix}$',
+  });
+  const pl = lc.items.find(x => x.kind === 'phase');
+  assert.ok(pl && pl.ready, 'lc 相轨迹应就绪');
+  assert.equal(pl.fields.A, '0, 1; -2, -3');
+  assert.equal(pl.fields.num, '');
+});
+
+test('plan：lc 状态响应缺状态空间矩阵时 ready=false 且提示为中文', () => {
+  const p = MQG.plan('lc', { tags: ['状态响应'], stem: '某系统，题目省略。' });
+  const st = p.items.find(x => x.kind === 'state');
+  assert.ok(st);
+  assert.equal(st.ready, false);
+  assert.ok(st.missing.includes('ss'));
+  assert.ok(ZH.test(st.hint));
 });
