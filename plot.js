@@ -577,6 +577,67 @@
     return toCoeffs(c).map(function (x) { return x * k; });
   }
 
+  // 纯函数：数开环 G(jω) 曲线绕 (−1, j0) 的逆时针圈数 → { P, N, Z, stable, imagAxisPole, ok }
+  // P：开环右半平面极点数；N：逆时针圈数；Z = P − N：闭环右半平面极点数
+  function nyquistCount(numC, denC, opts) {
+    const numA = trimLead(toCoeffs(numC)), denA = trimLead(toCoeffs(denC));
+    if (!numA.length || denA.length < 2) return null;
+    const o = opts || {};
+    const wMin = Math.max(1e-4, num(o.wMin, 0.01));
+    const wMax = num(o.wMax, 100);
+    const N = Math.max(20, Math.floor(num(o.samples, 400)));
+    const Hc = [];
+    for (let i = 0; i < N; i++) {
+      const w = wMin + (wMax - wMin) * i / (N - 1);
+      Hc.push(freqResp(numA, denA, w, 's'));
+    }
+    const poles = polyRoots(denA);
+    const P = poles.filter(function (p) { return p.re > 1e-9; }).length;
+    const mirror = [];
+    for (let i = N - 1; i >= 0; i--) mirror.push({ x: Hc[i].re, y: -Hc[i].im });
+    const main = Hc.map(function (h) { return { x: h.re, y: h.im }; })
+      .filter(function (p) { return isFinite(p.x) && isFinite(p.y); });
+    let total = 0, ok = true;
+    const seq = mirror.map(function (p) { return { x: p.x + 1, y: p.y }; })
+      .concat(main.map(function (p) { return { x: p.x + 1, y: p.y }; }));
+    for (let i = 1; i < seq.length; i++) {
+      const a0 = Math.atan2(seq[i - 1].y, seq[i - 1].x);
+      const a1 = Math.atan2(seq[i].y, seq[i].x);
+      if (!isFinite(a0) || !isFinite(a1)) { ok = false; break; }
+      let d = a1 - a0;
+      while (d > Math.PI) d -= 2 * Math.PI;
+      while (d < -Math.PI) d += 2 * Math.PI;
+      total += d;
+    }
+    const Nw = ok ? Math.round(total / (2 * Math.PI)) : 0;
+    const Z = P - Nw;
+    const imagAxisPole = poles.some(function (p) { return Math.abs(p.re) <= 1e-9; });
+    return { P: P, N: Nw, Z: Z, stable: Z === 0, imagAxisPole: imagAxisPole, ok: ok };
+  }
+
+  // 纯函数：2×2 系统矩阵 → 平衡点类型（迹/行列式判别）→ { tr, det, disc, type, eigs }
+  function classifyEquilibrium2(A) {
+    if (!Array.isArray(A) || A.length !== 2 || !Array.isArray(A[0]) || A[0].length !== 2) return null;
+    const tr = Number(A[0][0]) + Number(A[1][1]);
+    const det = Number(A[0][0]) * Number(A[1][1]) - Number(A[0][1]) * Number(A[1][0]);
+    const disc = tr * tr - 4 * det;
+    let type, eigs;
+    if (disc >= 0) {
+      const s1 = (tr + Math.sqrt(disc)) / 2, s2 = (tr - Math.sqrt(disc)) / 2;
+      eigs = [s1, s2];
+      type = (s1 < -1e-9 && s2 < -1e-9) ? '稳定结点（两特征值均负，收敛）'
+        : (s1 > 1e-9 && s2 > 1e-9) ? '不稳定结点（两特征值均正，发散）'
+          : '鞍点（特征值异号，不稳定）';
+    } else {
+      const re = tr / 2, im = Math.sqrt(-disc) / 2;
+      eigs = [{ re: re, im: im }, { re: re, im: -im }];
+      type = re < -1e-9 ? '稳定焦点（共轭特征值实部为负，收敛振荡）'
+        : re > 1e-9 ? '不稳定焦点（共轭特征值实部为正，发散振荡）'
+          : '中心（纯虚特征值，等幅振荡）';
+    }
+    return { tr: tr, det: det, disc: disc, type: type, eigs: eigs };
+  }
+
   // 由 s 域分子/分母系数建立可控标准型状态空间（A,B,C,D）
   function ssFromTF(numC, denC) {
     const den = trimLead(toCoeffs(denC));
@@ -738,24 +799,9 @@
     ctx.moveTo(cx, cy - 8); ctx.lineTo(cx, cy + 8); ctx.stroke();
     ctx.restore();
 
-    // P：开环右半平面极点；N：曲线绕 (−1,j0) 的逆时针圈数；Z = P − N
-    const poles = polyRoots(denC);
-    const P = poles.filter(function (p) { return p.re > 1e-9; }).length;
-    let total = 0, ok = true;
-    const seq = mirror.map(function (p) { return { x: p.x + 1, y: p.y }; })
-      .concat(main.map(function (p) { return { x: p.x + 1, y: p.y }; }));
-    for (let i = 1; i < seq.length; i++) {
-      const a0 = Math.atan2(seq[i - 1].y, seq[i - 1].x);
-      const a1 = Math.atan2(seq[i].y, seq[i].x);
-      if (!isFinite(a0) || !isFinite(a1)) { ok = false; break; }
-      let d = a1 - a0;
-      while (d > Math.PI) d -= 2 * Math.PI;
-      while (d < -Math.PI) d += 2 * Math.PI;
-      total += d;
-    }
-    const Nw = ok ? Math.round(total / (2 * Math.PI)) : 0;
-    const Z = P - Nw;
-    const imagAxisPole = poles.some(function (p) { return Math.abs(p.re) <= 1e-9; });
+    // P/N/Z：复用纯函数 nyquistCount（与绘图共用同一套数圈逻辑）
+    const cnt = nyquistCount(numC, denC, { wMin: wMin, wMax: wMax, samples: N });
+    const P = cnt.P, Nw = cnt.N, Z = cnt.Z, imagAxisPole = cnt.imagAxisPole;
 
     drawLabel(ctx, box, (s.label || '奈奎斯特图') + '　' + tfText(s.num, s.den), th);
     ctx.fillStyle = Z === 0 ? th.stem : th.pole;
@@ -1161,22 +1207,9 @@
     ctx.stroke();
     ctx.restore();
 
-    // 2×2 特征值 → 平衡点类型
-    const tr = A[0][0] + A[1][1];
-    const det = A[0][0] * A[1][1] - A[0][1] * A[1][0];
-    const disc = tr * tr - 4 * det;
-    let type;
-    if (disc >= 0) {
-      const s1 = (tr + Math.sqrt(disc)) / 2, s2 = (tr - Math.sqrt(disc)) / 2;
-      type = (s1 < -1e-9 && s2 < -1e-9) ? '稳定结点（两特征值均负，收敛）'
-        : (s1 > 1e-9 && s2 > 1e-9) ? '不稳定结点（两特征值均正，发散）'
-          : '鞍点（特征值异号，不稳定）';
-    } else {
-      const re = tr / 2;
-      type = re < -1e-9 ? '稳定焦点（共轭特征值实部为负，收敛振荡）'
-        : re > 1e-9 ? '不稳定焦点（共轭特征值实部为正，发散振荡）'
-          : '中心（纯虚特征值，等幅振荡）';
-    }
+    // 2×2 特征值 → 平衡点类型（复用纯函数 classifyEquilibrium2）
+    const eq = classifyEquilibrium2(A);
+    const tr = eq.tr, det = eq.det, type = eq.type;
     drawLabel(ctx, box, (s.label || '相平面 / 相轨迹') + '　· 标记为给定初值，原点为平衡点', th);
     ctx.fillStyle = th.muted;
     ctx.font = '12px sans-serif';
@@ -1264,6 +1297,11 @@
     polyMul: polyMul,
     polyAdd: polyAdd,
     polyRoots: polyRoots,
+    freqResp: freqResp,
+    ssFromTF: ssFromTF,
+    integrateRK4: integrateRK4,
+    nyquistCount: nyquistCount,
+    classifyEquilibrium2: classifyEquilibrium2,
     drawPlot: drawPlot,
     PREVIEW: PREVIEW,
   };

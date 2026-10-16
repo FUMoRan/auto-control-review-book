@@ -2547,6 +2547,11 @@ function genParamChips(params) {
   if (params.eq) chips.push({ t: '微分方程（阶 ' + params.eq.order + '）', hit: true });
   if (params.ss) chips.push({ t: '状态空间 ' + params.ss.n + ' 阶（A/B/C/D）', hit: true });
   if (params.gainK != null) chips.push({ t: '增益 K=' + params.gainK, hit: true });
+  const symTf = (params.openLoop && params.openLoop.symbolic) ? params.openLoop
+    : (params.tf && params.tf.symbolic) ? params.tf : null;
+  if (symTf && (symTf.params || []).length) {
+    chips.push({ t: '含符号系数 ' + symTf.params.join('、') + '（自动判稳并给稳定范围）', hit: true });
+  }
   (params.notes || []).forEach(n => chips.push({ t: n, hit: true }));
   if (!chips.length) {
     chips.push({ t: '未从题面识别到可解析的表达式，可把题目写成 $G(s)=\\frac{10}{s^{2}+2s+10}$、开环 $G(s)=\\frac{K}{s(s+1)}$，或写出 $A=\\begin{pmatrix}…\\end{pmatrix}$、$B$、$C$', hit: false });

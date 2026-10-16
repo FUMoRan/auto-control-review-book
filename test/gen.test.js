@@ -133,7 +133,7 @@ test('extractStateSpace：A/B/C/D 一次性抽取，D 允许标量', () => {
 test('extractParams：参数键名与取值符合契约', () => {
   const p = MQG.extractParams('题面 $G(s)=\\frac{10}{s^{2}+2s+10}$，K=5');
   assert.deepEqual(Object.keys(p).sort(),
-    ['eq', 'gainK', 'notes', 'openLoop', 'ss', 'tf'].sort());
+    ['closedLoop', 'eq', 'gainK', 'notes', 'openLoop', 'ss', 'tf'].sort());
   assert.deepEqual(p.tf.den, [1, 2, 10]);
   assert.equal(p.gainK, 5);
   assert.ok(Array.isArray(p.notes));
@@ -176,9 +176,14 @@ test('表格层 perf：ζ≥1（过阻尼）时 σ%/tp 优雅降级为「—」'
   assert.match(t.note, /不适用|过阻尼|临界/);
 });
 
-test('表格层 perf：非二阶分母（一阶/三阶）返回 null', () => {
-  assert.equal(MQG.buildTable('perf', { tf: { num: [1], den: [1, 1], domain: 's' } }), null);
-  assert.equal(MQG.buildTable('perf', { tf: { num: [1], den: [1, 1, 1, 1], domain: 's' } }), null);
+test('表格层 perf：非二阶分母（一阶/三阶）改用数值积分给出指标', () => {
+  const t1 = MQG.buildTable('perf', { tf: { num: [1], den: [1, 1], domain: 's' } });
+  assert.ok(t1, '一阶系统应给出数值指标表');
+  assert.match(t1.note, /龙格库塔/);
+  const t3 = MQG.buildTable('perf', { tf: { num: [1], den: [1, 1, 1, 1], domain: 's' } });
+  assert.ok(t3, '三阶系统应给出数值指标表');
+  // 常数分母（非真系统）无法积分，仍返回 null
+  assert.equal(MQG.buildTable('perf', { tf: { num: [1], den: [1], domain: 's' } }), null);
 });
 
 /* ===================== 表格层：劳斯表 ===================== */
@@ -449,4 +454,54 @@ test('plan：lc 状态响应缺状态空间矩阵时 ready=false 且提示为中
   assert.equal(st.ready, false);
   assert.ok(st.missing.includes('ss'));
   assert.ok(ZH.test(st.hint));
+});
+
+/* ===================== 符号系数：自动识别参数（不限 K） ===================== */
+test('符号系数：K/(s(s+1)(s+2)) 自动识别参数 K，给出稳定范围 0<K<6', () => {
+  const text = '开环传递函数 $G(s)=\\frac{K}{s(s+1)(s+2)}$';
+  const p = MQG.extractParams(text);
+  assert.ok(p.openLoop && p.openLoop.symbolic, '应识别为含符号系数');
+  assert.deepEqual(p.openLoop.params, ['K'], '参数名自动识别，不锁死 K');
+  const sym = MQG.symTF(p);
+  assert.ok(sym && sym.symbolic);
+  const r = MQG.stableRange(p);
+  assert.ok(r && !r.unsupported);
+  assert.equal(r.param, 'K');
+  assert.match(r.rangeText, /0 < K < 6/);
+  const st = MQG.buildTable('routh', p);
+  assert.ok(st, '符号系数应能落成劳斯表');
+  assert.match(rowOf(st, '稳定范围')[1], /0 < K < 6/);
+});
+
+test('符号系数：参数名不限于 K（a、tau 等同样识别）', () => {
+  const pa = MQG.extractParams('开环传递函数 $G(s)=\\frac{a}{s(s+1)(s+2)}$');
+  assert.deepEqual(pa.openLoop.params, ['a']);
+  const r = MQG.stableRange(pa);
+  assert.ok(r && !r.unsupported);
+  assert.equal(r.param, 'a');
+  assert.match(r.rangeText, /0 < a < 6/);
+});
+
+/* ===================== 表格层：根轨迹特征量 ===================== */
+test('表格层 locus：根轨迹特征量（符号增益 K 与纯数值开环都支持）', () => {
+  const p = MQG.extractParams('开环传递函数 $G(s)=\\frac{K}{s(s+1)(s+2)}$');
+  const t = MQG.buildTable('locus', p);
+  assert.ok(t, '符号增益应能给出根轨迹特征量');
+  const poles = rowOf(t, '开环极点')[1];
+  assert.match(poles, /0/); assert.match(poles, /-1/); assert.match(poles, /-2/);
+  assert.equal(rowOf(t, '开环零点')[1], '无');
+  assert.equal(rowOf(t, '渐近线条数')[1], '3');
+  assert.match(rowOf(t, '渐近线交点')[1], /^-1$/);
+  assert.match(rowOf(t, '分离')[1], /-0\.42/);
+  assert.match(rowOf(t, '与虚轴交点')[1], /1\.414/);
+  assert.match(rowOf(t, '临界增益')[1], /^6$/);
+
+  const t2 = MQG.buildTable('locus', { tf: { num: [1], den: [1, 3, 2, 0], domain: 's' } });
+  assert.ok(t2, '纯数值开环也应能给出根轨迹特征量');
+  assert.match(rowOf(t2, '渐近线交点')[1], /^-1$/);
+  assert.match(rowOf(t2, '临界增益')[1], /^6$/);
+
+  // 非经典增益根轨迹（参数在分母）如实返回 null，不臆造
+  const pDen = MQG.extractParams('$G(s)=\\frac{1}{s^{2}+K s+1}$');
+  assert.equal(MQG.buildTable('locus', pDen), null);
 });
