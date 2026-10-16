@@ -1,7 +1,7 @@
 /* =========================================================
    transforms.js 数据模块单元测试（Node 内置 test runner）
    运行：node --test test/transforms.test.js  或  node test/transforms.test.js
-   站点：自控 · 线控 复习本（《自动控制原理》/《线性控制系统》）
+   站点：自控 · 现控 复习本（《自动控制原理》/《现代控制》）
    ========================================================= */
 const test = require('node:test');
 const assert = require('node:assert/strict');

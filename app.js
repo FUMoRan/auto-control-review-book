@@ -1,6 +1,6 @@
 /* =========================================================
-   自控 · 线控 复习本 · app.js
-   科目：ac = 自动控制原理（经典控制）/ lc = 线性控制系统（现代控制），顶部切换，数据按 subject 字段分区。
+   自控 · 现控 复习本 · app.js
+   科目：ac = 自动控制原理（经典控制）/ lc = 现代控制，顶部切换，数据按 subject 字段分区。
    两个视图：q = 错题 / k = 知识点，数据分开存，共用一套标签。
    在基座（数学复习本）之上新增：
      · 学科绘图（plot.js / conv.js）与代码高亮（code.js）
@@ -609,7 +609,7 @@ async function persist(key, val) {
 }
 function saveStore(key, list) { return persist(key, list); }
 
-/* ===================== 种子数据（自控 / 线控 各两条例） ===================== */
+/* ===================== 种子数据（自控 / 现控 各两条例） ===================== */
 function seedQuestions() {
   const now = Date.now();
   return [
@@ -1750,7 +1750,7 @@ function downloadBlob(name, blob) {
   a.click();
   URL.revokeObjectURL(a.href);
 }
-const FILE_BASE = '自控 · 线控 复习本';
+const FILE_BASE = '自控 · 现控 复习本';
 
 // 体积小的纯文字备份（不含配图）
 document.getElementById('exportBtn').onclick = () => {
@@ -2661,7 +2661,7 @@ const aiNoun = () => active === 'q' ? '题目' : '知识点';
 function aiOcrPrompt() {
   const n = aiNoun();
   return [
-    `你是《自动控制原理 / 线性控制系统》的${n}识别助手。用户会给你一张图片（拍照或截图）。`,
+    `你是《自动控制原理 / 现代控制》的${n}识别助手。用户会给你一张图片（拍照或截图）。`,
     `请只把图中的${n}原文准确转录出来，不要解答，也不要添加任何解析、答案或说明。`,
     '要求：',
     '1. 只输出原文本身，不要输出【】这类标记，不要标题，不要任何解释；',
@@ -2726,7 +2726,7 @@ function aiPromptText() {
     ? `一道《${curSubjectName()}》题目`
     : `一个《${curSubjectName()}》知识点（含讲解）`;
   return [
-    `请扮演《自动控制原理 / 线性控制系统》课程的助教。下面我会把${what}发给你（可以直接发图片），`,
+    `请扮演《自动控制原理 / 现代控制》课程的助教。下面我会把${what}发给你（可以直接发图片），`,
     '请你把它整理成可直接导入我复习本的固定格式。',
     '',
     '输出要求：',

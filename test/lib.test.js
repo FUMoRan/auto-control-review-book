@@ -323,9 +323,9 @@ test('粘贴文本经解析归一化后可正确排程', () => {
 /* ===================== 科目与新增字段 ===================== */
 test('SUBJECT 定义两个科目及其简写', () => {
   assert.equal(SUBJECT.ac, '自动控制原理');
-  assert.equal(SUBJECT.lc, '线性控制系统');
+  assert.equal(SUBJECT.lc, '现代控制');
   assert.equal(SUBJECT_SHORT.ac, '自控');
-  assert.equal(SUBJECT_SHORT.lc, '线控');
+  assert.equal(SUBJECT_SHORT.lc, '现控');
 });
 
 test('normalizeQuestion / normalizeKp 的 subject 默认 ac，非法值回退 ac', () => {

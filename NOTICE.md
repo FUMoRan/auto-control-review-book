@@ -1,13 +1,13 @@
 # 第三方组件声明 / Third-Party Notices
 
-「自控 · 线控 复习本」——一个面向《自动控制原理》与《线性控制系统》
+「自控 · 现控 复习本」——一个面向《自动控制原理》与《现代控制》
 课程、完全本地离线的错题与知识点复习网站——包含下列第三方组件。这些组件的
 版权归其各自作者所有，并适用其各自的许可证。此处列出是为了满足相应许可证的
 署名与声明要求。
 
-This project, "Auto Control / Linear Control Review Book" — a fully offline,
+This project, "Auto Control / Modern Control Review Book" — a fully offline,
 local-first revision site for the courses *Principles of Automatic Control* and
-*Linear Control Systems* — includes the following third-party components. Their
+*Modern Control* — includes the following third-party components. Their
 copyrights belong to their respective authors and they are governed by their
 own licenses. These notices are provided to satisfy their attribution and
 notice requirements.
