@@ -3,12 +3,12 @@
    科目：ac = 自动控制原理（经典控制）/ lc = 现代控制，顶部切换，数据按 subject 字段分区。
    两个视图：q = 错题 / k = 知识点，数据分开存，共用一套标签。
    在基座（数学复习本）之上新增：
-     · 学科绘图（plot.js）与代码高亮（code.js）
+     · 学科绘图（plot.js）
      · 公式速查表（transforms.js）
      · 配图编号、顺序调整、卡片大图模式、多图灯箱（翻页/缩放/旋转/拖动）
      · 拖拽与剪贴板粘贴图片、公式快捷插入条、学科预设标签
-     · 搜索扩展 has:img / has:code、只看有图 / 只看有代码
-     · 学科化 AI 识题提示词（含 MATLAB/Python 代码段）
+     · 搜索扩展 has:img、只看有图
+     · 学科化 AI 识题提示词
    ========================================================= */
 
 /* ===================== 存储键 =====================
@@ -39,7 +39,6 @@ const {
 
 /* 学科模块（经典脚本已先行加载，挂到 window 上） */
 const MQP = window.MQP || {};   // 绘图
-const MQC = window.MQC || {};   // 代码高亮
 const MQT = window.MQT || {};   // 速查表
 const MQG = window.MQG || {};   // 一键生成（标签驱动，纯本地）
 
@@ -448,21 +447,6 @@ document.addEventListener('click', e => {
   if (t && t.dataset.imgId) openFromThumb(t, t.dataset.imgId);
 });
 
-/* ---------- 代码块「复制」按钮（委托绑定，无需内联事件） ---------- */
-document.addEventListener('click', e => {
-  if (!e.target || !e.target.closest) return;
-  const btn = e.target.closest('button[data-copy]');
-  if (!btn) return;
-  const wrap = btn.closest('.codewrap');
-  const pre = wrap && wrap.querySelector('pre.code');
-  if (!pre) return;
-  copyText(pre.innerText).then(ok => {
-    const old = btn.textContent;
-    btn.textContent = ok ? '已复制 ✓' : '复制失败';
-    setTimeout(() => { btn.textContent = old; }, 1200);
-  });
-});
-
 /* ---------- 回收站（软删除，30 天自动清理） ---------- */
 const TRASH_DAYS = 30;
 let trash = []; // 启动时由 loadInitial 从 IndexedDB 载入
@@ -639,12 +623,6 @@ function seedQuestions() {
         '第 5 步：求调节时间。$5\\%$ 误差带下 $t_s=3T$，代入 $T=1$ 得 $t_s=3\\,\\mathrm{s}$（若取 $2\\%$ 误差带则 $t_s=4T=4\\,\\mathrm{s}$）。',
       ].join('\n'),
       knowledge: '一阶惯性系统 $G(s)=\\dfrac{K}{Ts+1}$：响应单调、无超调，稳态值为 $K$（此处 $K=2$）；时间常数 $T$ 越小过渡越快，$\\pm5\\%$ 误差带 $t_s=3T$、$\\pm2\\%$ 误差带 $t_s=4T$。',
-      code: [
-        'num = 2; den = [1 1];',
-        'sys = tf(num, den);        % G(s) = 2/(s+1)',
-        'step(sys); grid on;        % 单位阶跃响应 y(t)=2(1-e^{-t})',
-        'stepinfo(sys)              % 读取 SettlingTime 等指标',
-      ].join('\n'),
       myAnswer: '',
     },
     {
@@ -659,12 +637,6 @@ function seedQuestions() {
         '第 5 步：结论。当 $K>0$ 时闭环特征根始终具有负实部，闭环系统稳定。',
       ].join('\n'),
       knowledge: '劳斯（Routh）稳定判据：把闭环特征方程按 $s$ 降幂排列，逐行计算劳斯表；第一列元素全部为正则系统稳定，第一列符号变化的次数等于右半平面特征根的个数。二阶系统 $s^{2}+a_1s+a_0=0$ 稳定的充要条件是 $a_1>0$ 且 $a_0>0$。',
-      code: [
-        's = tf(\'s\');',
-        'G = 1/(s*(s+2));          % 单位增益下开环 G(s)',
-        'rlocus(G); grid on;       % 根轨迹：K>0 时两支均在左半平面',
-        'roots([1 2 5])            % 例如 K=5 时特征根实部为负',
-      ].join('\n'),
       myAnswer: '',
     },
     {
@@ -679,11 +651,6 @@ function seedQuestions() {
         '第 5 步：结论。$Q_c$ 满秩，由能控性秩判据知系统完全能控。',
       ].join('\n'),
       knowledge: '能控性秩判据：$n$ 维线性定常系统 $\\dot{x}=Ax+Bu$ 完全能控 $\\iff$ 能控性矩阵 $Q_c=\\begin{pmatrix}B&AB&\\cdots&A^{n-1}B\\end{pmatrix}$ 满秩，即 $\\mathrm{rank}\\,Q_c=n$。单输入时 $Q_c$ 为 $n\\times n$ 方阵，条件化为 $\\det Q_c\\neq0$。',
-      code: [
-        'A = [1 2; 0 3]; B = [0; 1];',
-        'Qc = ctrb(A, B);          % 能控性矩阵 [B AB]',
-        'rank(Qc)                  % 返回 2 = n，说明完全能控',
-      ].join('\n'),
       myAnswer: '',
     },
     {
@@ -698,12 +665,6 @@ function seedQuestions() {
         '第 5 步：核对可控性。$A$ 的最后一行取 $\\begin{pmatrix}-2&-3\\end{pmatrix}$、$B$ 取 $\\begin{pmatrix}0\\\\1\\end{pmatrix}$，能控性矩阵满秩，确为可控标准型。',
       ].join('\n'),
       knowledge: '可控标准型（相变量形）：对首一传递函数 $\\dfrac{b_0}{s^{n}+a_{n-1}s^{n-1}+\\cdots+a_0}$，取 $A$ 为标准伴随形式（最后一行 $\\begin{pmatrix}-a_0&-a_1&\\cdots&-a_{n-1}\\end{pmatrix}$），$B=\\begin{pmatrix}0&\\cdots&0&1\\end{pmatrix}^{T}$，$C=\\begin{pmatrix}b_0&0&\\cdots&0\\end{pmatrix}$。',
-      code: [
-        'num = 1; den = [1 3 2];',
-        '[A, B, C, D] = tf2ss(num, den);  % 得到可控标准型（相变量形）',
-        'sys = ss(A, B, C, D);',
-        'ctrb(A, B)                        % 验证能控性矩阵满秩',
-      ].join('\n'),
       myAnswer: '',
     },
   ];
@@ -814,10 +775,9 @@ const DEF = {
       stem: '题目（公式用 $...$）',
       analysis: '解析',
       knowledge: '知识点讲解',
-      code: '代码（MATLAB / Python，可选）',
       myAnswer: '我的错误答案（可选）',
     },
-    importFieldMap: { 题目: 'stem', 解析: 'analysis', 知识点: 'knowledge', 代码: 'code', 我的错误答案: 'myAnswer', 标签: 'tags' },
+    importFieldMap: { 题目: 'stem', 解析: 'analysis', 知识点: 'knowledge', 我的错误答案: 'myAnswer', 标签: 'tags' },
     importRequired: '题目',
     importExample: [
       '【题目】',
@@ -831,10 +791,6 @@ const DEF = {
       '第 5 步：写出结论。当 $K>0$ 时闭环特征根均为负实部，系统稳定；本题为二阶系统，$K$ 无上界。',
       '【知识点】',
       '劳斯（Routh）判据：特征方程按 $s$ 降幂排列列劳斯表，第一列元素全部同号则系统稳定，第一列符号变化次数即右半平面极点数。二阶系统稳定充要条件为各系数同号且不为零。',
-      '【代码】',
-      's = tf(\'s\');',
-      'G = 1/(s*(s+2));',
-      'rlocus(G); grid on;        % 根轨迹：K>0 时两支均在左半平面',
       '【我的错误答案】',
       '（选填：我当时是怎么错的）',
       '【标签】',
@@ -847,11 +803,10 @@ const DEF = {
       { label: '查看我的错误答案', text: it.myAnswer || '' },
       { label: '查看解析', text: it.analysis },
       { label: '查看知识点讲解', text: it.knowledge },
-      { label: '查看代码', text: it.code, code: true },
     ],
-    hay: it => [it.stem, it.analysis, it.knowledge, it.myAnswer || '', it.code || '', it.tags.join(' ')].join(' '),
+    hay: it => [it.stem, it.analysis, it.knowledge, it.myAnswer || '', it.tags.join(' ')].join(' '),
     previewMain: o => o.stem || '（无题目）',
-    previewInfo: o => `解析 ${o.analysis ? '✓' : '✗'} · 知识点 ${o.knowledge ? '✓' : '✗'} · 代码 ${o.code ? '✓' : '✗'} · 标签 ${o.tags.length}`,
+    previewInfo: o => `解析 ${o.analysis ? '✓' : '✗'} · 知识点 ${o.knowledge ? '✓' : '✗'} · 标签 ${o.tags.length}`,
   },
   k: {
     noun: '个知识点',
@@ -970,8 +925,8 @@ function paintPresetState(box, isOn) {
 /* ===================== 视图状态 ===================== */
 const PAGE = 30;
 const views = {
-  q: { visibleCount: PAGE, selected: new Set(), selectMode: false, groupMode: false, activeTags: new Set(), tagMode: 'all', search: '', status: '', starOnly: false, dueOnly: false, imgOnly: false, codeOnly: false, collectionFilter: COL_ALL },
-  k: { visibleCount: PAGE, selected: new Set(), selectMode: false, groupMode: false, activeTags: new Set(), tagMode: 'all', search: '', status: '', starOnly: false, dueOnly: false, imgOnly: false, codeOnly: false, collectionFilter: COL_ALL },
+  q: { visibleCount: PAGE, selected: new Set(), selectMode: false, groupMode: false, activeTags: new Set(), tagMode: 'all', search: '', status: '', starOnly: false, dueOnly: false, imgOnly: false, collectionFilter: COL_ALL },
+  k: { visibleCount: PAGE, selected: new Set(), selectMode: false, groupMode: false, activeTags: new Set(), tagMode: 'all', search: '', status: '', starOnly: false, dueOnly: false, imgOnly: false, collectionFilter: COL_ALL },
 };
 let active = 'q';
 let editingId = null;
@@ -1030,10 +985,9 @@ function renderBareMath(text, images) {
   }).join('');
 }
 
-// 折叠区内容：代码段用高亮块，其余走公式渲染
+// 折叠区内容：走公式渲染
 function sectionHTML(x, images) {
   if (!x.text) return `<span class="section-label">${esc(x.empty || '（暂无）')}</span>`;
-  if (x.code) return MQC.codeBlockHTML ? MQC.codeBlockHTML(x.text) : `<pre class="code">${esc(x.text)}</pre>`;
   return renderMath(x.text, images);
 }
 
@@ -1079,8 +1033,6 @@ function currentFiltered() {
     const hasImg = !!(it.images && it.images.length);
     if (v.imgOnly && !hasImg) return false;
     if (s.hasImg && !hasImg) return false;
-    if (v.codeOnly && !it.code) return false;
-    if (s.hasCode && !it.code) return false;
     // 标签筛选：默认「同时满足全部（交集）」；由「相关 X 个」跳转时改为「满足其一（并集）」
     if (v.activeTags.size) {
       const hit = v.tagMode === 'any'
@@ -1125,11 +1077,10 @@ function applyStatus(item, next) {
   saveActive();
 }
 
-// 折叠区：过滤掉空内容（空「我的错误答案」、空「代码」不显示）
+// 折叠区：过滤掉空内容（空「我的错误答案」不显示）
 function visibleSections(it) {
   return DEF[active].details(it).filter(x => {
     if (x.label === '查看我的错误答案') return !!x.text;
-    if (x.label === '查看代码') return !!x.text;
     return true;
   });
 }
@@ -1220,7 +1171,6 @@ function makeCard(it) {
     ov.starOnly = false;
     ov.dueOnly = false;
     ov.imgOnly = false;
-    ov.codeOnly = false;
     ov.selectMode = false;
     ov.selected.clear();
     switchView(other);
@@ -1596,8 +1546,6 @@ function syncHeader() {
   }
   const ib = document.getElementById('imgOnlyBtn');
   if (ib) ib.classList.toggle('primary', v.imgOnly);
-  const cb = document.getElementById('codeOnlyBtn');
-  if (cb) cb.classList.toggle('primary', v.codeOnly);
 }
 
 function switchView(v) {
@@ -1625,7 +1573,6 @@ function switchSubject(sub) {
     views[kind].starOnly = false;
     views[kind].dueOnly = false;
     views[kind].imgOnly = false;
-    views[kind].codeOnly = false;
     views[kind].selectMode = false;
   }
   syncHeader();
@@ -1687,13 +1634,6 @@ document.getElementById('dueBtn').onclick = () => {
 document.getElementById('imgOnlyBtn').onclick = () => {
   const v = cur();
   v.imgOnly = !v.imgOnly;
-  syncHeader();
-  applyFilters();
-};
-
-document.getElementById('codeOnlyBtn').onclick = () => {
-  const v = cur();
-  v.codeOnly = !v.codeOnly;
   syncHeader();
   applyFilters();
 };
@@ -1995,18 +1935,6 @@ bindDropzone(document.getElementById('editDrop'), async files => {
   renderEditThumbs();
 });
 
-function refreshCodePreview() {
-  const box = document.getElementById('ef_codePreview');
-  if (!box) return;
-  const el = document.getElementById('ef_code');
-  const src = el ? el.value : '';
-  const langEl = document.getElementById('ef_codeLang');
-  if (!src.trim()) { box.innerHTML = ''; if (langEl) langEl.textContent = ''; return; }
-  const lang = MQC.detectLang ? MQC.detectLang(src) : '';
-  if (langEl) langEl.textContent = '识别为 ' + ((MQC.LANG_LABEL || {})[lang] || lang || '纯文本');
-  box.innerHTML = MQC.codeBlockHTML ? MQC.codeBlockHTML(src, lang) : '';
-}
-
 function openEdit(it) {
   editingId = it.id;
   editOrig = new Set(it.images || []);
@@ -2017,8 +1945,7 @@ function openEdit(it) {
     : `编辑知识点（${SUBJECT_SHORT[it.subject] || ''}）`;
   document.getElementById('editForm').innerHTML = Object.entries(d.fieldLabels).map(([key, label]) => `
     <label class="f-label">${esc(label)}</label>
-    <textarea id="ef_${key}" rows="${key === 'code' ? 7 : 4}"${key === 'code' ? ' spellcheck="false"' : ''}></textarea>
-    ${key === 'code' ? '<div class="f-lang"><span class="section-label">高亮预览</span><span class="badge-note" id="ef_codeLang"></span></div><div id="ef_codePreview"></div>' : ''}
+    <textarea id="ef_${key}" rows="4"></textarea>
   `).join('') + `
     <label class="f-label">标签（逗号分隔）</label>
     <input id="ef_tags" class="field-input" type="text" placeholder="根轨迹, 劳斯判据">
@@ -2055,10 +1982,6 @@ function openEdit(it) {
   };
 
   document.getElementById('editImgMsg').textContent = '';
-  if (document.getElementById('ef_code')) {
-    document.getElementById('ef_code').oninput = refreshCodePreview;
-    refreshCodePreview();
-  }
   renderEditThumbs();
   editModal.classList.add('open');
 }
@@ -2251,7 +2174,6 @@ function renderStats() {
   const sum = (list, st) => list.filter(i => i.status === st).length;
   const starN = list => list.filter(i => i.star).length;
   const imgN = list => list.reduce((n, i) => n + (i.images ? i.images.length : 0), 0);
-  const codeN = list => list.filter(i => i.code).length;
   const weekN = list => list.filter(i => (i.createdAt || 0) >= week).length;
 
   const q = stores.q.items, k = stores.k.items;
@@ -2294,7 +2216,6 @@ function renderStats() {
     <div class="stat-card" style="margin-top:12px">
       <h3>其他</h3>
       <div class="stat-line"><span>配图数量</span><b>${imgN(q) + imgN(k)}</b></div>
-      <div class="stat-line"><span>含代码的错题</span><b>${codeN(q)}</b></div>
       <div class="stat-line"><span>标签数量</span><b>${freq.size}</b></div>
       <div class="stat-line"><span>回收站</span><b>${trash.length}</b></div>
       <div style="margin-top:8px">
@@ -2328,7 +2249,6 @@ function toMarkdown() {
       if (it.myAnswer) { out.push(''); out.push('**我的错误答案**'); out.push(''); out.push(it.myAnswer); }
       if (it.analysis) { out.push(''); out.push('**解析**'); out.push(''); out.push(it.analysis); }
       if (it.knowledge) { out.push(''); out.push('**知识点**'); out.push(''); out.push(it.knowledge); }
-      if (it.code) { out.push(''); out.push('**代码**'); out.push(''); out.push('```' + (MQC.detectLang ? MQC.detectLang(it.code) : '')); out.push(it.code); out.push('```'); }
     } else {
       out.push(`**${it.title || '（无名称）'}**`);
       if (it.content) { out.push(''); out.push(it.content); }
@@ -2367,12 +2287,10 @@ document.getElementById('printBtn').onclick = () => {
     const tags = it.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('');
     const main = isQ ? renderMath(it.stem, it.images) : `<b>${renderMath(it.title, it.images)}</b>`;
     const secs = isQ
-      ? [['我的错误答案', it.myAnswer], ['解析', it.analysis], ['知识点', it.knowledge], ['代码', it.code]]
+      ? [['我的错误答案', it.myAnswer], ['解析', it.analysis], ['知识点', it.knowledge]]
       : [['讲解', it.content]];
     const secHtml = secs.filter(s => s[1]).map(s =>
-      s[0] === '代码'
-        ? `<div class="print-sec"><div class="print-label">代码</div><pre class="code">${esc(s[1])}</pre></div>`
-        : `<div class="print-sec"><div class="print-label">${s[0]}</div><div>${renderMath(s[1], it.images)}</div></div>`).join('');
+      `<div class="print-sec"><div class="print-label">${s[0]}</div><div>${renderMath(s[1], it.images)}</div></div>`).join('');
     return `<div class="print-item">
       <div class="print-num">第 ${i + 1} 题${isQ ? '' : '（知识点）'} · ${STATUS[it.status]}${it.star ? ' ★' : ''}</div>
       <div class="print-head">${main}</div>
@@ -3153,9 +3071,8 @@ function aiOcrPrompt() {
     '   只要出现 \\frac、\\sqrt、\\int、\\sum、^、_ 这类数学写法，它就是一个公式，必须加 $...$ 或 $$...$$；',
     '3. 符号按控制课程惯例书写：经典控制常用 $s$、$G(s)$、$\\omega$、$\\zeta$、$\\omega_n$；',
     '   现代控制常用 $\\dot{x}=Ax+Bu$、$A$、$B$、$C$、$e^{At}$；矩阵换行用 \\\\，列用 &；',
-    '4. 图中若有 MATLAB / Python 代码，请先单独写一行标明语言（如 MATLAB 或 Python），再原样逐行转录；',
-    `5. 图中若有多道${n}，它们之间用单独一行 === 分隔；`,
-    '6. 若图中没有可识别的内容，就只回答：未识别到内容。',
+    `4. 图中若有多道${n}，它们之间用单独一行 === 分隔；`,
+    '5. 若图中没有可识别的内容，就只回答：未识别到内容。',
   ].join('\n');
 }
 
@@ -3198,10 +3115,9 @@ function aiOutputRules() {
     '   · 经典控制要说明所用判据与结论（闭环稳定性、稳定裕度、稳态误差）；现代控制要说明所用方法（能控/能观性秩判据、李雅普诺夫方程、极点配置、观测器），并给出矩阵结果；',
     '   · 每一步单独成行，行首用「第 1 步：」「第 2 步：」这样的前缀；',
     '6. 【知识点】写清「定义 + 物理含义 + 典型用法 + 易错点」，公式用 LaTeX，必要时用 $$...$$ 展示推导；',
-    '7. 若题解用得到 MATLAB 或 Python，把可直接运行的代码原样放进【代码】段（不要放进公式里）；',
-    '8. 上面的原文里若含多项（以 === 分隔），输出的每一项与之一一对应；',
-    '9. 不要改动原文的题目内容，只在其基础上补充解答与整理；',
-    '10. 【我的错误答案】是留给用户自己填的，请保持为空、不要输出该段内容。',
+    '7. 上面的原文里若含多项（以 === 分隔），输出的每一项与之一一对应；',
+    '8. 不要改动原文的题目内容，只在其基础上补充解答与整理；',
+    '9. 【我的错误答案】是留给用户自己填的，请保持为空、不要输出该段内容。',
   ] : [
     '5. 【讲解】必须逐步讲透，不要只给结论：',
     '   · 先给定义（写成 LaTeX），再说明物理含义（从经典控制或现代控制层面怎么理解）；',
